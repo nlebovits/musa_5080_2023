@@ -22,6 +22,69 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1.6em;
   vertical-align: middle;
 }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
 </style>
 
 
@@ -36,6 +99,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="intro_to_tidycensus_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="intro_to_tidycensus_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
 
+<script src="intro_to_tidycensus_files/libs/kePrint-0.0.1/kePrint.js"></script>
+<link href="intro_to_tidycensus_files/libs/lightable-0.0.1/lightable.css" rel="stylesheet">
+
 
 </head>
 
@@ -47,21 +113,11 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">Table of contents</h2>
    
   <ul>
-  <li><a href="#introduction" id="toc-introduction" class="nav-link active" data-scroll-target="#introduction">Introduction</a></li>
-  <li><a href="#setup" id="toc-setup" class="nav-link" data-scroll-target="#setup">Setup</a>
-  <ul class="collapse">
-  <li><a href="#install-libraries" id="toc-install-libraries" class="nav-link" data-scroll-target="#install-libraries">Install Libraries</a></li>
-  <li><a href="#census-api-key" id="toc-census-api-key" class="nav-link" data-scroll-target="#census-api-key">Census API Key</a></li>
-  <li><a href="#load-census-data-dictionaries" id="toc-load-census-data-dictionaries" class="nav-link" data-scroll-target="#load-census-data-dictionaries">Load census data dictionaries</a></li>
-  </ul></li>
+  <li><a href="#setup" id="toc-setup" class="nav-link active" data-scroll-target="#setup">Setup</a></li>
   <li><a href="#downloading-data-from-tidycensus" id="toc-downloading-data-from-tidycensus" class="nav-link" data-scroll-target="#downloading-data-from-tidycensus">Downloading Data from Tidycensus</a>
   <ul class="collapse">
   <li><a href="#create-a-vector-of-census-variables" id="toc-create-a-vector-of-census-variables" class="nav-link" data-scroll-target="#create-a-vector-of-census-variables">Create a vector of census variables</a></li>
   <li><a href="#call-the-census-api-to-get-tract-level-data-for-2020-for-all-of-philadelphia" id="toc-call-the-census-api-to-get-tract-level-data-for-2020-for-all-of-philadelphia" class="nav-link" data-scroll-target="#call-the-census-api-to-get-tract-level-data-for-2020-for-all-of-philadelphia">Call the Census API to get tract level data for 2020 for all of Philadelphia</a></li>
-  </ul></li>
-  <li><a href="#wrangling-data-with-dplyr" id="toc-wrangling-data-with-dplyr" class="nav-link" data-scroll-target="#wrangling-data-with-dplyr">Wrangling Data with dplyr</a>
-  <ul class="collapse">
-  <li><a href="#mutating-selecting-and-renaming-variables" id="toc-mutating-selecting-and-renaming-variables" class="nav-link" data-scroll-target="#mutating-selecting-and-renaming-variables">Mutating, selecting and renaming variables</a></li>
   <li><a href="#joining-data" id="toc-joining-data" class="nav-link" data-scroll-target="#joining-data">Joining data</a></li>
   <li><a href="#doing-column-math-using-mutate" id="toc-doing-column-math-using-mutate" class="nav-link" data-scroll-target="#doing-column-math-using-mutate">Doing column math using mutate</a></li>
   <li><a href="#exercise---creating-new-variables" id="toc-exercise---creating-new-variables" class="nav-link" data-scroll-target="#exercise---creating-new-variables">Exercise - Creating New Variables</a></li>
@@ -77,8 +133,15 @@ ul.task-list li input[type="checkbox"] {
   <li><a href="#graphic-comparisons-using-ggplot2" id="toc-graphic-comparisons-using-ggplot2" class="nav-link" data-scroll-target="#graphic-comparisons-using-ggplot2">Graphic comparisons Using ggplot2</a></li>
   </ul></li>
   <li><a href="#spatial-data-and-tidycensus" id="toc-spatial-data-and-tidycensus" class="nav-link" data-scroll-target="#spatial-data-and-tidycensus">Spatial Data and Tidycensus</a></li>
-  <li><a href="#discussion" id="toc-discussion" class="nav-link" data-scroll-target="#discussion">Discussion</a></li>
-  <li><a href="#assignment" id="toc-assignment" class="nav-link" data-scroll-target="#assignment">Assignment</a></li>
+  <li><a href="#assignment-content" id="toc-assignment-content" class="nav-link" data-scroll-target="#assignment-content">Assignment Content</a>
+  <ul class="collapse">
+  <li><a href="#change-in-vacant-housing-units-per-tract" id="toc-change-in-vacant-housing-units-per-tract" class="nav-link" data-scroll-target="#change-in-vacant-housing-units-per-tract">Change in Vacant Housing Units per Tract</a>
+  <ul class="collapse">
+  <li><a href="#scatterplot" id="toc-scatterplot" class="nav-link" data-scroll-target="#scatterplot">Scatterplot</a></li>
+  <li><a href="#map" id="toc-map" class="nav-link" data-scroll-target="#map">Map</a></li>
+  <li><a href="#table" id="toc-table" class="nav-link" data-scroll-target="#table">Table</a></li>
+  </ul></li>
+  </ul></li>
   </ul>
 </nav>
 </div>
@@ -113,257 +176,519 @@ ul.task-list li input[type="checkbox"] {
 
 </header>
 
-<section id="introduction" class="level1">
-<h1>Introduction</h1>
-<p>This tutorial will introduce you to the use of R for US Census data. This code uses the <code>tidycensus</code> package to query the US Census Bureau’s Application Programming Interface (API). An API is, roughly, a “place” on the internet which you can interact with using a computer program. In our case, we will interact with an API which allows us access to US Census Data - this is the same data library that the Census’ own website uses.</p>
-<p>Perhaps more importantly, this tutorial introduces you to the <code>tidyverse</code> world of libraries - the best data wrangling, summarizing and visualizing tools available in R. These packages are designed to “play nice” with each other - none of them use the same function names and they are maintained together by a team of developers to make sure they work well.</p>
-<p>R Studio publishes handy “cheat sheets” for popular R libraries, including <a href="https://www.rstudio.com/wp-content/uploads/2015/02/data-wrangling-cheatsheet.pdf">data wrangling in the tidyverse</a>.</p>
-<p>This exercise consists of a few classic planner’s tasks:</p>
-<ol type="1">
-<li><p>Collecting and manipulating census data</p></li>
-<li><p>Measuring demographic change over time for a given geography</p></li>
-<li><p>Measuring statistics for a geography relative to a parent geography</p></li>
-<li><p>Creating summary statistics regarding demographics for a collection of geographies</p></li>
-</ol>
-</section>
 <section id="setup" class="level1">
 <h1>Setup</h1>
-<section id="install-libraries" class="level2">
-<h2 class="anchored" data-anchor-id="install-libraries">Install Libraries</h2>
-<p>If you haven’t installed either <code>tidyverse</code>, <code>tidycensus</code>, or <code>sf</code> use the <code>install.packages</code> command like so:</p>
-<p>(If you have them installed, you can skip this step)</p>
-<p>Once the packages are installed, you must load them using hte <code>library</code> command so that they are active in your environment.</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/setup_0aaa2741bb998c4dece0f56a1cabb919">
-
+<p>We start our analysis by loading the required packages. I’ve also defined some global settings (<code>tigris</code> caching and a <code>ggplot</code> theme). While I’m at it, I also define color and transparency lists to be used in visualizations later in the Quarto doc.</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidyverse)</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidycensus)</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(sf)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(ggthemr)</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(kableExtra)</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="fu">options</span>(<span class="at">tigris_use_cache =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="fu">ggthemr</span>(<span class="st">'flat'</span>)</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>crs <span class="ot">&lt;-</span> <span class="st">"EPSG:4326"</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>scatter_pal <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>  <span class="st">"MT AIRY"</span> <span class="ot">=</span> <span class="st">"#f39c12"</span>,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>  <span class="st">"REST OF PHILADELPHIA"</span> <span class="ot">=</span> <span class="st">"#3498db"</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>scatter_alpha <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>  <span class="st">"MT AIRY"</span> <span class="ot">=</span> <span class="dv">1</span>,</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>  <span class="st">"REST OF PHILADELPHIA"</span> <span class="ot">=</span> <span class="fl">0.15</span></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 </div>
-</section>
-<section id="census-api-key" class="level2">
-<h2 class="anchored" data-anchor-id="census-api-key">Census API Key</h2>
-<p>You will need a “key” to access the Census API. You can find one at <a href="https://api.census.gov/data/key_signup.html">their website</a>.</p>
-</section>
-<section id="load-census-data-dictionaries" class="level2">
-<h2 class="anchored" data-anchor-id="load-census-data-dictionaries">Load census data dictionaries</h2>
-<p>Now that we have our census credentials loaded, we can start downloading information from the API using some functions from tidycensus. We are going to make some comparisons between 2020 and 2016 ACS estimates for our target census tracts. In order to choose variables of interest, we are going to load the data dictionaries for each time period using <code>load_variables</code>.</p>
-<p>What does this <code>load_variables</code> function do and why are we writing these things in the parentheses after the name of the function? If you want to know about a function in R, you can type the name of a package or function into the console like this: <code>??load_variables</code> and information will show up in the help window in your R Studio environment.</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/load_variables_430158f3330cac9ed90bdd856edbf82a">
-
+<p>My Census credentials are cached in my local machine, so I don’t have to load them here. I can skip to pulling the variable lists using <code>load_variables()</code>. This will allow me to compare 2020 and 2016 ACS estimates for our target Census tracts.</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>acs_variable_list<span class="fl">.2020</span> <span class="ot">&lt;-</span> <span class="fu">load_variables</span>(<span class="dv">2020</span>, <span class="co">#year</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>                                         <span class="st">"acs5"</span>, <span class="co">#five year ACS estimates</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>                                         <span class="at">cache =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>acs_variable_list<span class="fl">.2016</span> <span class="ot">&lt;-</span> <span class="fu">load_variables</span>(<span class="dv">2016</span>, <span class="co">#year</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>                                         <span class="st">"acs5"</span>, <span class="co">#five year ACS estimates</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>                                         <span class="at">cache =</span> <span class="cn">TRUE</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 </div>
-<p>Once we have loaded these data frames, we can observe and search through the data frames of variable information which should appear in our global environment either by clicking on them or using the <code>View(YOUR DATAFRAME NAME HERE)</code> command.</p>
-<p>Let’s look around in these data frames for a few minutes and see what’s in there.</p>
-</section>
 </section>
 <section id="downloading-data-from-tidycensus" class="level1">
 <h1>Downloading Data from Tidycensus</h1>
+<p>With my setup complete, I can now move to pulling ACS data with <code>tidycensus</code>.</p>
 <section id="create-a-vector-of-census-variables" class="level2">
 <h2 class="anchored" data-anchor-id="create-a-vector-of-census-variables">Create a vector of census variables</h2>
-<p>We can populate a vector of variable names we will send to the Census API. We call this list <code>acs_vars</code>. This is the beauty of a code-based workflow - you can take this vector and put anything you want in it when you have a new analysis to do and re-run it for different variables. These need to be character strings, and hence, in quotes as you see below.</p>
-<p>Keep in mind the categories and code numbers change a bit over time - you may need separate vectors for different census years.</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/acs_vars_a3c0a1e6f9df48065970afa301ad3fce">
-
+<p>I start by declaring the vector of variable names that we want.</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>acs_vars <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"B01001_001E"</span>, <span class="co"># ACS total Pop estimate</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>              <span class="st">"B25002_001E"</span>, <span class="co"># Estimate of total housing units</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>              <span class="st">"B25002_003E"</span>, <span class="co"># Number of vacant housing units</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>              <span class="st">"B19013_001E"</span>, <span class="co"># Median HH Income ($)</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>              <span class="st">"B02001_002E"</span>, <span class="co"># People describing themselves as "white alone"</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>              <span class="st">"B06009_006E"</span>) <span class="co"># Total graduate or professional degree</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 </div>
 </section>
 <section id="call-the-census-api-to-get-tract-level-data-for-2020-for-all-of-philadelphia" class="level2">
 <h2 class="anchored" data-anchor-id="call-the-census-api-to-get-tract-level-data-for-2020-for-all-of-philadelphia">Call the Census API to get tract level data for 2020 for all of Philadelphia</h2>
-<p>We use the <code>get_acs</code> function in <code>tidycensus</code> to query the API. Notice the different arguments for the function, and that they require certain types of info. For example, <code>geography</code> requires one of a finite list of answers, and they have to be formatted as character string.</p>
-<p>Remember the <code>??</code> function - you can learn about the parameters for <code>get_acs</code> this way. There is also a function called <code>get_decennial</code> which you can use for decennial census counts.</p>
-<p>We ask for data on our <code>acs_vars</code> for all tracts in Philadelphia County, PA in 2020. We ask for “wide” data (e.g.&nbsp;one variable per column, one row per tract) and we set <code>geometry</code> to <code>FALSE</code>.</p>
-<p>What happens when you set <code>geometry</code> to <code>TRUE</code>?</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/get_acs_2020_c31e030cc6cf58f39013941ff809625e">
-
-</div>
-</section>
-</section>
-<section id="wrangling-data-with-dplyr" class="level1">
-<h1>Wrangling Data with dplyr</h1>
-<section id="mutating-selecting-and-renaming-variables" class="level2">
-<h2 class="anchored" data-anchor-id="mutating-selecting-and-renaming-variables">Mutating, selecting and renaming variables</h2>
-<p>Now we can manipulate our data using some of our <code>tidyverse</code> data wrangling tools from the <code>dplyr</code> library.</p>
-<p>The <code>dplyr</code> package is great for these operations and has some very common sense functions that are fairly intuitive because they use “verbs”. You can:</p>
-<ul>
-<li><p>select columns (<code>select</code>)</p></li>
-<li><p>rename columns (<code>rename</code>)</p></li>
-<li><p>summarize data (<code>summarize</code>) by groups (<code>group_by</code>)</p></li>
-<li><p>create new columns and specify their value (<code>mutate</code>)</p></li>
-</ul>
-<p>The operator <code>%&gt;%</code> is known as the “pipe” and lets you chain operations together - passing a dataframe along through different operations.</p>
-<p>Let’s manipulate our data using the “pipe” %&gt;% and some tidy data wrangling commands. We will remove some variables using the “select” command and a parenthesis preceded by a minus sign. We will rename some variables using “rename”. We will create some new ones using “mutate”</p>
-<p>First we select tract <code>GEOID</code> and <code>NAME</code> and only those variables in the <code>acs_vars</code> list - we are only using the estimates from the ACS (suffix “E” on the variable names), we are not retaining the margin of error calculations (suffix “M” on the variable names).</p>
-<p>Look at the output and see what has changed.</p>
-<p>Second we <code>rename</code> our variables to more common sense names.</p>
-<p>Lastly we <code>mutate</code> a few new columns.</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/do_some_dplyr_281212c36d34ceb2a1632e49b9c1bd9d">
-
-</div>
-<p>Let’s grab the 2016 data and do the same operations, but now - let’s <em>chain the piped operations directly to the API call and do it all at once</em>. The only difference here is that we are going to change the variable names to say “2016” in them, not “2020”.</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/get_acs_2016_7255439c2e8c8d9a3a6e0398155bfd33">
-
+<p>Using the <code>get_acs</code> function, I can query the Census API to import the data. Below, I’ve condensed code from the original template for concision’s sake. I combine the selection, renaming, and mutating steps, and query both 2020 and 2016 data in one chunk. I select tract <code>GEOID</code> and <code>NAME</code>, and only those variables in the <code>acs_vars</code> list - we are only using the estimates from the ACS (suffix “E” on the variable names), we are not retaining the margin of error calculations (suffix “M” on the variable names). Although the original homework assignment sets the <code>geometry</code> to <code>FALSE</code> here, I set it to <code>TRUE</code> for 2016 to avoid the redundancy of reimporting and wrangling these same data later to produce the maps. (If both dataframes are <code>sf</code> objects, I cannot left join them, so it’s easier to left join the non-spatial 2020 dataframe to the spatial 2016 dataframe.)</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">suppressMessages</span>(</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>acsTractsPHL<span class="fl">.2016</span> <span class="ot">&lt;-</span> <span class="fu">get_acs</span>(<span class="at">geography =</span> <span class="st">"tract"</span>,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>                             <span class="at">year =</span> <span class="dv">2016</span>, </span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>                             <span class="at">variables =</span> acs_vars,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>                             <span class="at">geometry =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>                             <span class="at">state =</span> <span class="st">"PA"</span>, </span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>                             <span class="at">county =</span> <span class="st">"Philadelphia"</span>,</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>                             <span class="at">output =</span> <span class="st">"wide"</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">select</span> (GEOID, NAME, <span class="fu">all_of</span>(acs_vars), geometry) <span class="sc">%&gt;%</span> </span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span> (<span class="at">total_pop.2016 =</span> B01001_001E,</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>          <span class="at">total_HU.2016 =</span> B25002_001E,</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>          <span class="at">total_vacant.2016 =</span> B25002_003E,</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>          <span class="at">med_HH_Income.2016 =</span> B19013_001E,</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>          <span class="at">total_White.2016 =</span> B02001_002E,</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>          <span class="at">total_GradDeg.2016 =</span> B06009_006E) <span class="sc">%&gt;%</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">vacancyPct.2016 =</span> total_vacant<span class="fl">.2016</span><span class="sc">/</span>total_HU<span class="fl">.2016</span>,</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>         <span class="at">pctWhite.2016 =</span> total_White<span class="fl">.2016</span><span class="sc">/</span>total_pop<span class="fl">.2016</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">st_as_sf</span>(<span class="at">crs =</span> crs)</span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a><span class="fu">suppressMessages</span>(</span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>acsTractsPHL<span class="fl">.2020</span> <span class="ot">&lt;-</span> <span class="fu">get_acs</span>(<span class="at">geography =</span> <span class="st">"tract"</span>,</span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>                             <span class="at">year =</span> <span class="dv">2020</span>, </span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>                             <span class="at">variables =</span> acs_vars, </span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>                             <span class="at">geometry =</span> <span class="cn">FALSE</span>, </span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a>                             <span class="at">state =</span> <span class="st">"PA"</span>, </span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a>                             <span class="at">county =</span> <span class="st">"Philadelphia"</span>, </span>
+<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a>                             <span class="at">output =</span> <span class="st">"wide"</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb4-29"><a href="#cb4-29" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">select</span> (GEOID, NAME, <span class="fu">all_of</span>(acs_vars)) <span class="sc">%&gt;%</span></span>
+<span id="cb4-30"><a href="#cb4-30" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span> (<span class="at">total_pop.2020 =</span> B01001_001E,</span>
+<span id="cb4-31"><a href="#cb4-31" aria-hidden="true" tabindex="-1"></a>          <span class="at">total_HU.2020 =</span> B25002_001E,</span>
+<span id="cb4-32"><a href="#cb4-32" aria-hidden="true" tabindex="-1"></a>          <span class="at">total_vacant.2020 =</span> B25002_003E,</span>
+<span id="cb4-33"><a href="#cb4-33" aria-hidden="true" tabindex="-1"></a>          <span class="at">med_HH_Income.2020 =</span> B19013_001E,</span>
+<span id="cb4-34"><a href="#cb4-34" aria-hidden="true" tabindex="-1"></a>          <span class="at">total_White.2020 =</span> B02001_002E,</span>
+<span id="cb4-35"><a href="#cb4-35" aria-hidden="true" tabindex="-1"></a>          <span class="at">total_GradDeg.2020 =</span> B06009_006E) <span class="sc">%&gt;%</span></span>
+<span id="cb4-36"><a href="#cb4-36" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">vacancyPct.2020 =</span> total_vacant<span class="fl">.2020</span><span class="sc">/</span>total_HU<span class="fl">.2020</span>,</span>
+<span id="cb4-37"><a href="#cb4-37" aria-hidden="true" tabindex="-1"></a>         <span class="at">pctWhite.2020   =</span> total_White<span class="fl">.2020</span><span class="sc">/</span>total_pop<span class="fl">.2020</span>)</span>
+<span id="cb4-38"><a href="#cb4-38" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 </div>
 </section>
 <section id="joining-data" class="level2">
 <h2 class="anchored" data-anchor-id="joining-data">Joining data</h2>
-<p>We can do a tabular join - each of our census dataframes should have a unique ID for each tract. You need to join columns that consist of the same type of data. Using the <code>glimpse</code> command can give you a quick overview of the data types for each column in your data set. Recall that joining character to numeric data is going to be a no-go.</p>
-<p>There are four kinds of joins - you can learn about them here: https://rpubs.com/williamsurles/293454</p>
-<p>We are going to do a “left join,” keeping all the observations from the left hand side of the join argument, and only those which match from the right. Ideally this consists of all of the observations from the right hand side considering we have the same geometries in 2016 and 2020.</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/left_join_tracts_a1a621911bb8d2e276c058148682a57d">
-
+<p>I’ll left join the 2020 data to the 2016 tract data. Any unmatched observations will be dropped, although in theory there should be none.</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>allACS <span class="ot">&lt;-</span> <span class="fu">left_join</span>(acsTractsPHL<span class="fl">.2016</span>, </span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>                    acsTractsPHL<span class="fl">.2020</span>,</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>                    <span class="at">by=</span> <span class="fu">c</span>(<span class="st">"GEOID"</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 </div>
 </section>
 <section id="doing-column-math-using-mutate" class="level2">
 <h2 class="anchored" data-anchor-id="doing-column-math-using-mutate">Doing column math using mutate</h2>
-<p>The <code>mutate</code> function can be used to create new columns. These columns can be the product of arithmetic using other columns. Here we are going to calculate changes in inflation-adjusted median household income from 2016-2020 and the change in the percentage of people holding a graduate degree. (Notice how we multiply <code>med_HH_Income.2016</code> by 1.08 to adjust it to 2020 dollars).</p>
-<p>Notice that you are overwriting allACS with a new data frame called the same thing. You can overwrite anything if you create something with the same name - so be careful!</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/do_mutates_82a48a85402b109217de649adac4fccd">
-
+<p>Here we are going to calculate changes in inflation-adjusted median household income from 2016-2020 and the change in the percentage of people holding a graduate degree. (Notice how we multiply <code>med_HH_Income.2016</code> by 1.08 to adjust it to 2020 dollars).</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>allACS <span class="ot">&lt;-</span> allACS <span class="sc">%&gt;%</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">change_med_HH_Income =</span> med_HH_Income<span class="fl">.2020</span> <span class="sc">-</span> (med_HH_Income<span class="fl">.2016</span> <span class="sc">*</span> <span class="fl">1.08</span>), </span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>         <span class="at">change_Grad_Degree_Pct =</span> (total_GradDeg<span class="fl">.2020</span><span class="sc">/</span>total_pop<span class="fl">.2020</span>)<span class="sc">-</span>(total_GradDeg<span class="fl">.2016</span><span class="sc">/</span>total_pop<span class="fl">.2016</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 </div>
 </section>
 <section id="exercise---creating-new-variables" class="level2">
 <h2 class="anchored" data-anchor-id="exercise---creating-new-variables">Exercise - Creating New Variables</h2>
-<p>Use the <code>mutate</code> command to create three new variables in your allACS data set. These variables can either be measures of change or proportions/percentages.</p>
-<p>If you want, you can put some new variables in your ACS data sets by adding to <code>acs_vars</code> - just make sure you put something in the <code>rename</code> commands we used earlier if you want to have intelligible variable names.</p>
+<p>I’ll add four new variables to the allACS dataset: change in total population, percent population change, and change in total vacancy, and change in percent vacancy.</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>allACS <span class="ot">&lt;-</span> allACS <span class="sc">%&gt;%</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>            <span class="fu">mutate</span>(</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>              <span class="at">tot_pop_change =</span> total_pop<span class="fl">.2020</span> <span class="sc">-</span> total_pop<span class="fl">.2016</span>,</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>              <span class="at">pct_pop_change =</span> tot_pop_change <span class="sc">/</span> total_pop<span class="fl">.2016</span> <span class="sc">*</span> <span class="dv">100</span>,</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>              <span class="at">tot_vacancy_change =</span> total_vacant<span class="fl">.2020</span> <span class="sc">-</span> total_vacant<span class="fl">.2016</span>,</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>              <span class="at">pct_vacancy_change =</span> tot_vacancy_change <span class="sc">/</span> total_vacant<span class="fl">.2016</span> <span class="sc">*</span> <span class="dv">100</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>            )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
 </section>
 </section>
 <section id="summarizing-census-data" class="level1">
 <h1>Summarizing Census Data</h1>
 <section id="exploring-central-tendancies" class="level2">
 <h2 class="anchored" data-anchor-id="exploring-central-tendancies">Exploring central tendancies</h2>
-<p>Base R language has lots of summary statistical functions, like <code>mean</code> and <code>median</code>. We can apply these to columns in our data frame.</p>
-<p>This one comes back <code>NA</code>. NA plus NA equals NA - so summarizing these data won’t work.</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/base_r_summaries_NA_example_e784ebb318f1c56b42f106a7fd085850">
-<div class="cell-output cell-output-stdout">
-<pre><code>[1] NA</code></pre>
-</div>
-</div>
-<p>OK, let’s try it again, using a workaround. Can you think of some reasons why omitting NA data might be problematic?</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/base_r_summaries_NA_rm_49077506ae85e27e22ff9f6d31422e24">
-<div class="cell-output cell-output-stdout">
-<pre><code>[1] 6012.472</code></pre>
-</div>
-<div class="cell-output cell-output-stdout">
-<pre><code>[1] 4873.76</code></pre>
-</div>
-</div>
+<p>Below, I explore several measures of central tendency. Using base R, but without omitting NA values, the returned mean in the change of household income is NA. We can omit NA values, but this may exclude important edge cases, such as tracts that were populated in 2016 but no longer populated in 2020. Omitting these NA values gives us a mean of 6012.47 and a median of 4873.76.</p>
 </section>
 <section id="exploring-distributions" class="level2">
 <h2 class="anchored" data-anchor-id="exploring-distributions">Exploring distributions</h2>
-<p>Base R has a graphics package - we can look at the distribution of the data, instead of just the central tendencies (e.g.&nbsp;<code>mean</code> and <code>median</code>).</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/basic_histogram_06d821e78534b1bf207c2640637020c3">
+<p>Base R has a graphics package - we can look at the distribution of the data, instead of just the central tendencies (e.g.&nbsp;<code>mean</code> and <code>median</code>). Again, note that this omits NA values.</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">hist</span>(allACS<span class="sc">$</span>change_med_HH_Income)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output-display">
 <p><img src="intro_to_tidycensus_files/figure-html/basic_histogram-1.png" class="img-fluid" width="672"></p>
 </div>
 </div>
-<p>We can also use the dynamic graphics package from the tidyverse, <code>gglot2</code> to make some more detailed histograms. We have lots of aesthetic options here.</p>
-<p>Make your own by changing the terms in the ggplot call - use a different variable and change the axis titles. You see we can build a nice plot with different elements using building blocks like <code>geom_histogram</code>.</p>
-<p>Notice that the <code>+</code> sign does the same work in ggplot that the <code>%&gt;%</code> does in tidy code.</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/ggplot_histogram_simple_c09e205ceef9465d29585c4cb504ffe1">
+<p>We can also use the dynamic graphics package from the tidyverse, <code>gglot2</code> to make some more detailed histograms. (Note that I’ve set the number of bins using the square root rule, rather than a binwidth 0f 5,000 as in the original document.) Here, we example the distribution of change in median household income. Some tracts have very large changes (both positive and negative) in median household income over the 5-year period that we’re examining. The most likely explanation here is that these represent tracts with relatively small populations, where a sudden influx of a handful of wealth residents (e.g., the construction of a luxury high rise) can rapidly and dramatically change the demographic profile of the tract.</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>bins <span class="ot">&lt;-</span> <span class="fu">as.integer</span>(<span class="fu">sqrt</span>(<span class="fu">nrow</span>(allACS)))</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(allACS)<span class="sc">+</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_histogram</span>(<span class="fu">aes</span>(change_med_HH_Income), <span class="at">bins =</span> bins)<span class="sc">+</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">"Change in HH median income by tract"</span>,</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">subtitle =</span> <span class="st">"Philadelphia, 2016-2020"</span>,</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">caption =</span> <span class="st">"Data: US Census Bureau, ACS 5-year estimates"</span>,</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">x=</span><span class="st">"Change in Med HH Income (2020 dollars)"</span>, </span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>       <span class="at">y=</span><span class="st">"Number of tracts"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output-display">
-<p><img src="intro_to_tidycensus_files/figure-html/ggplot_histogram_simple-1.png" class="img-fluid" width="672"></p>
+<p><img src="intro_to_tidycensus_files/figure-html/med%20inc%20histogram-1.png" class="img-fluid" width="672"></p>
 </div>
 </div>
-<p>Let’s make this a bit more complex, and add some labels.</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/ggplot_histogram_59429ed284b8aa12f766c00c9b74dd18">
+<p>As with the change in median household income, the change in vacancy rate is roughly normally distributed, with a handful of outliers demonstrating substantial changes in their vacancy rate</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(allACS)<span class="sc">+</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_histogram</span>(<span class="fu">aes</span>(tot_vacancy_change), <span class="at">bins =</span> bins)<span class="sc">+</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">"Pct. change in vacancy by tract"</span>,</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">subtitle =</span> <span class="st">"Philadelphia, 2016-2020"</span>,</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">caption =</span> <span class="st">"Data: US Census Bureau, ACS 5-year estimates"</span>,</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">x=</span><span class="st">"Change in vacancy rate (%)"</span>, </span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>       <span class="at">y=</span><span class="st">"Number of tracts"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output-display">
-<p><img src="intro_to_tidycensus_files/figure-html/ggplot_histogram-1.png" class="img-fluid" width="672"></p>
+<p><img src="intro_to_tidycensus_files/figure-html/vacancy%20hist-1.png" class="img-fluid" width="672"></p>
 </div>
 </div>
-<p>Wow, there are some tracts with a huge increase in Med HH Income! What is the simplest explanation for that?</p>
 </section>
 <section id="making-a-summary-table" class="level2">
 <h2 class="anchored" data-anchor-id="making-a-summary-table">Making a summary table</h2>
-<p>The <code>summarize</code> function from the <code>dplyr</code> library is very powerful - you can use these summary functions in the context of a table - this is akin to “pivot tables” and other tools from Excel - but this is incredibly simple. You could create a table of statistics and easily export it for use in a report.</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/summaryTable_e06b85183a537391e6d76b548428329f">
+<p>Here, I use the <code>summarize</code> function to create a rudimentary table of summary statistics and display it.</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>summaryTable <span class="ot">&lt;-</span> allACS <span class="sc">%&gt;%</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">st_drop_geometry</span>() <span class="sc">%&gt;%</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarize</span>(<span class="at">mean_change_HH_Income =</span> <span class="fu">mean</span>(change_med_HH_Income, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>            <span class="at">med_change_HH_Income =</span> <span class="fu">median</span>(change_med_HH_Income, <span class="at">na.rm =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>summaryTable <span class="sc">%&gt;%</span> </span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kbl</span>() <span class="sc">%&gt;%</span></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kable_styling</span>(<span class="at">bootstrap_options =</span> <span class="fu">c</span>(<span class="st">"striped"</span>, <span class="st">"hover"</span>, <span class="st">"condensed"</span>, <span class="st">"responsive"</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
 
+<table class="table table-striped table-hover table-condensed table-responsive" style="margin-left: auto; margin-right: auto;">
+ <thead>
+  <tr>
+   <th style="text-align:right;"> mean_change_HH_Income </th>
+   <th style="text-align:right;"> med_change_HH_Income </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:right;"> 6012.472 </td>
+   <td style="text-align:right;"> 4873.76 </td>
+  </tr>
+</tbody>
+</table>
+
+</div>
 </div>
 </section>
 </section>
 <section id="comparing-geographies" class="level1">
 <h1>Comparing geographies</h1>
-<p>Let’s say you are a planner working for the City, and you are creating a neighborhood plan for a particular neighborhood. Our example neighborhood will be Mt. Airy, in Philadelphia’s Northwest section.</p>
-<p>Let’s start by making a vector that has the GEOIDs of census tracts in Mt. Airy. The allACS$GEOID column is a CHARACTER, not a number, athough it appears numeric.</p>
-<p>We can then create a vactor variable, which we call <code>mtAiry</code>, using a “boolean” statement.</p>
-<p>We say that if a tract has a GEOID in <code>myTracts</code>, the variable <code>mtAiry</code> should take on a value of “MT AIRY”, or else it takes on a value of “REST OF PHILADELPHIA”</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/myTracts_02b3f5ac0a6a3ed35c3d240b6f6ac697">
+<p>Let’s say you are a planner working for the City, and you are creating a neighborhood plan for a particular neighborhood. Our example neighborhood will be Mt. Airy, in Philadelphia’s Northwest section. To do this, we declare a vector of the GEOIDs of all the census tracts in Mt. Airy, then use that to create a boolean column in the <code>allACS</code> dataframe to represent whether or not a tract is in Mt. Airy.</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>myTracts <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"42101023500"</span>, </span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>              <span class="st">"42101023600"</span>, </span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>              <span class="st">"42101023700"</span>, </span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>              <span class="st">"42101025300"</span>, </span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>              <span class="st">"42101025400"</span>,</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>              <span class="st">"42101025500"</span>, </span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>              <span class="st">"42101025600"</span>, </span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>              <span class="st">"42101038800"</span>)</span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>allACS <span class="ot">&lt;-</span> allACS <span class="sc">%&gt;%</span></span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">mtAiry =</span> <span class="fu">ifelse</span>(GEOID <span class="sc">%in%</span> myTracts, <span class="st">"MT AIRY"</span>, <span class="st">"REST OF PHILADELPHIA"</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>We can use this column to create a new summary table that distinguishes between Mt. Airy and the rest of the city. Note that, city-wide, the mean income level per tract increased, while the median level decreased. This is likely because, while some outliers at the upper end saw substantial gains, the bulk of tracts saw decreases. On the other hand, the opposite was true in Mt. Airy, suggesting that perhaps an upper outlier tract saw a slight decrease in income levels, while the bulk of tracts in Mt. Airy saw slight increases.</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>summaryTable2 <span class="ot">&lt;-</span> allACS <span class="sc">%&gt;%</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(mtAiry) <span class="sc">%&gt;%</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">st_drop_geometry</span>() <span class="sc">%&gt;%</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarize</span>(<span class="at">mean_change_HH_Income =</span> <span class="fu">mean</span>(change_med_HH_Income, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>            <span class="at">med_change_HH_Income =</span> <span class="fu">median</span>(change_med_HH_Income, <span class="at">na.rm =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>summaryTable2 <span class="sc">%&gt;%</span> </span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kbl</span>() <span class="sc">%&gt;%</span></span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kable_styling</span>(<span class="at">bootstrap_options =</span> <span class="fu">c</span>(<span class="st">"striped"</span>, <span class="st">"hover"</span>, <span class="st">"condensed"</span>, <span class="st">"responsive"</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+
+<table class="table table-striped table-hover table-condensed table-responsive" style="margin-left: auto; margin-right: auto;">
+ <thead>
+  <tr>
+   <th style="text-align:left;"> mtAiry </th>
+   <th style="text-align:right;"> mean_change_HH_Income </th>
+   <th style="text-align:right;"> med_change_HH_Income </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:left;"> MT AIRY </td>
+   <td style="text-align:right;"> 6944.860 </td>
+   <td style="text-align:right;"> 3115.14 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> REST OF PHILADELPHIA </td>
+   <td style="text-align:right;"> 5990.851 </td>
+   <td style="text-align:right;"> 5072.88 </td>
+  </tr>
+</tbody>
+</table>
 
 </div>
-<p>Let’s make a new summary table, this time accounting for the statistics for both Mt. Airy and the rest of the city.</p>
-<p>We can see that city-wide, “on average” the mean tract income level increased, while the median level decreased. Why might this be?</p>
-<p>We had the opposite dynamic in Mt. Airy, where median household income per tract rose, while mean income fell.</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/summary_table_2_070e489d02a24b0025092ba4580552e2">
-
 </div>
 <section id="graphic-comparisons-using-ggplot2" class="level2">
 <h2 class="anchored" data-anchor-id="graphic-comparisons-using-ggplot2">Graphic comparisons Using ggplot2</h2>
-<p>A graphical approach to subdividing and summarizing the data might make this easier to figure out.</p>
-<p>We could compare the distributions between Mt. Airy and the City by taking our histogram we created earlier and using the <code>facet_wrap</code> option to subdivide the data and create a side-by-side comparison.</p>
-<p>What can we see here about the distributions of the data, and how the distribution and the central tendencies might tell us different stories about what’s happening?</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/ggplot_histogram_2_a80f9fd30d1da8ac02f63927881845ca">
+<p>Using the <code>facet_wrap</code> argument <code>ggplot</code>’s <code>geom_histogram</code>, I compare the distributions of income in Mt. Airy versus the rest of the city. Mt. Airy’s data are roughly normally distributed (although there aren’t enough observations to really say this), as are the city’s as a whole. However, the tract-level changes for the city as a whole are more extreme than those in Mt. Airy: the minimum and maximum changes for the city are much lower and higher respectively than those in Mt. Airy. Thus, the measures of central tendency give us an incomplete picture of how Mt. Airy compares to the city as a whole, in particular because there aren’t very many data points to go off of in Mt. Airy.</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(allACS)<span class="sc">+</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_histogram</span>(<span class="fu">aes</span>(change_med_HH_Income),</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>                 <span class="at">binwidth =</span> <span class="dv">5000</span>)<span class="sc">+</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">"Change in HH median income by tract"</span>,</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">subtitle =</span> <span class="st">"Philadelphia, 2016-2020"</span>,</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">caption =</span> <span class="st">"Data: US Census Bureau, ACS 5-year estimates"</span>,</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">x=</span><span class="st">"Change in Med HH Income (2020 dollars)"</span>, </span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>       <span class="at">y=</span><span class="st">"Number of tracts"</span>)<span class="sc">+</span></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span>mtAiry, <span class="at">scales =</span> <span class="st">"free"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output-display">
 <p><img src="intro_to_tidycensus_files/figure-html/ggplot_histogram_2-1.png" class="img-fluid" width="672"></p>
 </div>
 </div>
-<p>We can create a scatterplot to see what the relationship is between 2016 and 2020 income and where our Mt. Airy tracts fall.</p>
-<p>Notice how we put the inflation adjustment right in the <code>geom_point</code> call - you can temporarily create new data inside your ggplot diagrams!</p>
-<p>I set a <code>fill</code> parameter to differentiate between our factor levels in the data.</p>
-<p>I add a line that represents y=x using <code>geom_abline</code>.</p>
-<p>What do you think this line represents? How does it help us interpret these points we are seeing?</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/ggplot_point1_ffc3c13fdbfc3d2e5860d21f0f1e0b4d">
+<p>We can create a scatterplot to see what the relationship is between 2016 and 2020 income and where our Mt. Airy tracts fall. Using <code>geom_abline</code>, we can also indicate visually the line at which a tract’s income in 2020 is equal to what it was in 2016 (that is, there has been no change). Points above this line have seen an increase in average income, while points below this line have seen a decrease.</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(allACS)<span class="sc">+</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>(<span class="fu">aes</span>(<span class="at">x =</span> med_HH_Income<span class="fl">.2016</span> <span class="sc">*</span> <span class="fl">1.08</span>, </span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>                 <span class="at">y =</span> med_HH_Income<span class="fl">.2020</span>,</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>                 <span class="at">color =</span> mtAiry,</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>                 <span class="at">alpha =</span> mtAiry))<span class="sc">+</span></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_color_manual</span>(<span class="at">values =</span> scatter_pal)<span class="sc">+</span></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_alpha_manual</span>(<span class="at">values =</span> scatter_alpha) <span class="sc">+</span></span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_abline</span>(<span class="at">intercept =</span> <span class="dv">0</span>, <span class="at">slope =</span> <span class="dv">1</span>, <span class="at">color =</span> <span class="st">"black"</span>)<span class="sc">+</span></span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">"2020 Median HH Income as a Function of 2016 Median HH Income"</span>,</span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">subtitle =</span> <span class="st">"All figures in 2020 dollars"</span>,</span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">caption =</span> <span class="st">"Data: US Census Bureau, ACS 5-year estimates"</span>,</span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">x=</span><span class="st">"Med HH Income 2016 ($)"</span>, </span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">y=</span><span class="st">"Med HH Income 2020 ($)"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output-display">
 <p><img src="intro_to_tidycensus_files/figure-html/ggplot_point1-1.png" class="img-fluid" width="672"></p>
 </div>
 </div>
-<p>There are very well established correlations between socio-demographic characteristics and wealth in the US. Philadelphia is no exception. A simple scatterplot is stark evidence of this correlation.</p>
-<p>We can plot a <code>geom_smooth</code> trendline in here using the <code>method = "lm"</code> e.g.&nbsp;a linear fit to see. The default for <code>geom_smooth</code> is much more wiggly and may not be the best for visuals like this.</p>
-<p>How do our tracts in Mt. Airy look in the context of distribution of wealth and relative to the trend line?</p>
-<p>If you plot these data for 2020, do they look different?</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/ggplot_point2_6800f05873cec76a79252c5e0d79b641">
+<p>There are very well established correlations between socio-demographic characteristics and wealth in the US. Philadelphia is no exception. A simple scatterplot is stark evidence of this correlation. We can plot a <code>geom_smooth</code> trendline in here using the <code>method = "lm"</code> e.g.&nbsp;a linear fit to see. Mt. Airy tracts all fall substantially above this line, indicating that, regardless of their racial composition, their residents are, on average, wealthier than residents in racially comparable tracts. This is true both in 2016 and 2020.</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(allACS) <span class="sc">+</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>(<span class="fu">aes</span>(<span class="at">x =</span> <span class="dv">100</span><span class="sc">*</span> pctWhite<span class="fl">.2016</span>, </span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>                 <span class="at">y =</span> med_HH_Income<span class="fl">.2016</span>,</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>                 <span class="at">color =</span> mtAiry,</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>                 <span class="at">alpha =</span> mtAiry)) <span class="sc">+</span></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_smooth</span>(<span class="fu">aes</span>(<span class="at">x =</span> <span class="dv">100</span><span class="sc">*</span> pctWhite<span class="fl">.2016</span>, </span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>                  <span class="at">y =</span> med_HH_Income<span class="fl">.2016</span>), </span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>              <span class="at">method =</span> <span class="st">"lm"</span>, <span class="at">se =</span> <span class="cn">FALSE</span>, <span class="at">color =</span> <span class="st">"black"</span>) <span class="sc">+</span></span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_color_manual</span>(<span class="at">values =</span> scatter_pal) <span class="sc">+</span></span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_alpha_manual</span>(<span class="at">values =</span> scatter_alpha) <span class="sc">+</span></span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">"2016 Median HH Income as a Function of Pct White"</span>,</span>
+<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">subtitle =</span> <span class="st">"All figures in 2016 dollars"</span>,</span>
+<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">caption =</span> <span class="st">"Data: US Census Bureau, ACS 5-year estimates"</span>,</span>
+<span id="cb16-15"><a href="#cb16-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">x=</span><span class="st">"Pct. Residents Identifying as 'White Only'"</span>, </span>
+<span id="cb16-16"><a href="#cb16-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">y=</span><span class="st">"Med HH Income 2016 ($)"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output-display">
 <p><img src="intro_to_tidycensus_files/figure-html/ggplot_point2-1.png" class="img-fluid" width="672"></p>
+</div>
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(allACS) <span class="sc">+</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>(<span class="fu">aes</span>(<span class="at">x =</span> <span class="dv">100</span><span class="sc">*</span> pctWhite<span class="fl">.2020</span>, </span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>                 <span class="at">y =</span> med_HH_Income<span class="fl">.2020</span>,</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>                 <span class="at">color =</span> mtAiry,</span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>                 <span class="at">alpha =</span> mtAiry)) <span class="sc">+</span></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_smooth</span>(<span class="fu">aes</span>(<span class="at">x =</span> <span class="dv">100</span><span class="sc">*</span> pctWhite<span class="fl">.2020</span>, </span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>                  <span class="at">y =</span> med_HH_Income<span class="fl">.2020</span>), </span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>              <span class="at">method =</span> <span class="st">"lm"</span>, <span class="at">se =</span> <span class="cn">FALSE</span>, <span class="at">color =</span> <span class="st">"black"</span>) <span class="sc">+</span></span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_color_manual</span>(<span class="at">values =</span> scatter_pal) <span class="sc">+</span></span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_alpha_manual</span>(<span class="at">values =</span> scatter_alpha) <span class="sc">+</span></span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">"2020 Median HH Income as a Function of Pct White"</span>,</span>
+<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">subtitle =</span> <span class="st">"All figures in 2020 dollars"</span>,</span>
+<span id="cb17-14"><a href="#cb17-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">caption =</span> <span class="st">"Data: US Census Bureau, ACS 5-year estimates"</span>,</span>
+<span id="cb17-15"><a href="#cb17-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">x=</span><span class="st">"Pct. Residents Identifying as 'White Only'"</span>, </span>
+<span id="cb17-16"><a href="#cb17-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">y=</span><span class="st">"Med HH Income 2020 ($)"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="intro_to_tidycensus_files/figure-html/ggplot_point2-2.png" class="img-fluid" width="672"></p>
 </div>
 </div>
 </section>
 </section>
 <section id="spatial-data-and-tidycensus" class="level1">
 <h1>Spatial Data and Tidycensus</h1>
-<p>Tidycensus can also provide us with a geometry for our data. The <code>sf</code> package handles shapefiles and interfaces well with <code>tidycensus</code> to allow us to analyze and map spatial data. Next lesson we will do some spatial analysis using these data.</p>
-<p>Let’s re-run our call for 2020 Census Data and turn the <code>geometry = TRUE</code> and then we can make a map of <code>pctWhite.2020</code> using the tidycensus data right in ggplot using a special <code>geom</code>.</p>
-<p>Notice that there is a <code>geometry</code> column in our data frame now - it’s actually an <code>sf</code> object, which is just like a data frame except it has a column with drawing instructions that you can’t operate on or alter.</p>
-<p>Observe the use of the <code>%&gt;%</code> operator here - I’m going to chain all of our operations together into one big chunk of code:</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/spatial_tidycensus_dffb8dc521742934aef2430a3abef110">
-
-</div>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/spatial_tidycensus_no_eval_f9ee9a9526597238a8e5068f8dca3446">
-
-</div>
-<p>Now we can create a a <code>geom_sf</code> which will allow you to map <code>sf</code> objects in <code>ggplot2</code> so long as they are have their projection set to WGS84 (aka web mercator). You can see above that we took the shapefile created by the tidycensus call and used the <code>st_as_sf</code> call to turn it into an <code>sf</code> object and set the <code>crs</code> (coordinate reference system) to <code>4326</code>, which is the code for WGS84. You can find all these kinds of codes at <a href="http://spatialreference.org">spatialreference.org</a>.</p>
-<p>Notice we create a <code>geom_sf</code> which symbologizes our data and then another which is designed to represent the boundary of Mt. Airy.</p>
-<p>In our next lesson, we will do more detailed cartography and spatial analysis using ggplot - using custom color palettes and more.</p>
-<div class="cell" data-hash="intro_to_tidycensus_cache/html/ggplot_geom_sf_af0a945aff1b6c21ae0819009089c431">
+<p>Using the <code>sf</code> format of our dat, I’ll map the distribution of race across Philadelphia.</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>mt_airy <span class="ot">&lt;-</span> allACS <span class="sc">%&gt;%</span> <span class="fu">filter</span>(mtAiry <span class="sc">==</span> <span class="st">"MT AIRY"</span>) <span class="sc">%&gt;%</span> <span class="fu">st_union</span>() <span class="sc">%&gt;%</span> <span class="fu">st_as_sf</span>()</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>()<span class="sc">+</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_sf</span>(<span class="at">data =</span> allACS, </span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>          <span class="fu">aes</span>(<span class="at">fill =</span> pctWhite<span class="fl">.2020</span>),</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>          <span class="at">color =</span> <span class="st">"transparent"</span>)<span class="sc">+</span></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_sf</span>(<span class="at">data =</span> mt_airy,</span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>          <span class="at">color =</span> <span class="st">"white"</span>,</span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>          <span class="at">fill =</span> <span class="st">"transparent"</span>)<span class="sc">+</span></span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>  viridis<span class="sc">::</span><span class="fu">scale_fill_viridis</span>(<span class="at">option =</span> <span class="st">"viridis"</span>, <span class="at">guide =</span> <span class="st">"colorbar"</span>) <span class="sc">+</span></span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">"Percentage of those identifying as 'white only' by tract"</span>,</span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">subtitle =</span> <span class="st">""</span>,</span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">caption =</span> <span class="st">"Data: US Census Bureau, ACS 5-year estimates"</span>) <span class="sc">+</span></span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_void</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 <div class="cell-output-display">
 <p><img src="intro_to_tidycensus_files/figure-html/ggplot_geom_sf-1.png" class="img-fluid" width="672"></p>
 </div>
 </div>
 </section>
-<section id="discussion" class="level1">
-<h1>Discussion</h1>
-<section id="delete-" class="level5">
-<h5 class="anchored" data-anchor-id="delete-">DELETE—————-</h5>
-<p>Delete things below here</p>
-<ul>
-<li><p>How would you describe the income and demographic statistics and trends in Mt. Airy relative to those of Philadelphia as a whole?</p></li>
-<li><p>Do you have a particular hypothesis about “stories” about Mt. Airy based on a look at the data in a spatial format?</p></li>
-<li><p>What do you think about the similarities and differences within the neighborhood? How can you probe at those using these data?</p></li>
-<li><p>Can you think of any other ways to subdivide the data we looked at in class to glean more insights about Mt. Airy?</p></li>
-</ul>
+<section id="assignment-content" class="level1">
+<h1>Assignment Content</h1>
+<section id="change-in-vacant-housing-units-per-tract" class="level2">
+<h2 class="anchored" data-anchor-id="change-in-vacant-housing-units-per-tract">Change in Vacant Housing Units per Tract</h2>
+<section id="scatterplot" class="level3">
+<h3 class="anchored" data-anchor-id="scatterplot">Scatterplot</h3>
+<p>This scatterplot suggests that, when it comes to total vacant units in 2020 as a function of total vacant units in 2016, the distribution for tracts in Mt. Airy do not differ substantially from the distribution for tracts across the city as a whole.</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(allACS)<span class="sc">+</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>(<span class="fu">aes</span>(<span class="at">x =</span> total_vacant<span class="fl">.2016</span>, </span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>                 <span class="at">y =</span> total_vacant<span class="fl">.2020</span>,</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>                 <span class="at">color =</span> mtAiry,</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>                 <span class="at">alpha =</span> mtAiry))<span class="sc">+</span></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_color_manual</span>(<span class="at">values =</span> scatter_pal)<span class="sc">+</span></span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_alpha_manual</span>(<span class="at">values =</span> scatter_alpha) <span class="sc">+</span></span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_abline</span>(<span class="at">intercept =</span> <span class="dv">0</span>, <span class="at">slope =</span> <span class="dv">1</span>, <span class="at">color =</span> <span class="st">"black"</span>)<span class="sc">+</span></span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">"2020 Housing Vacancy as a Function of 2016 Housing Vacancy"</span>,</span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">caption =</span> <span class="st">"Data: US Census Bureau, ACS 5-year estimates"</span>,</span>
+<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">x =</span> <span class="st">"Total Vacant Units, 2016"</span>, </span>
+<span id="cb19-13"><a href="#cb19-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">y =</span> <span class="st">"Total Vacant Units, 2020"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="intro_to_tidycensus_files/figure-html/change%20in%20vacant%20scatter-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
 </section>
-<section id="add-" class="level5">
-<h5 class="anchored" data-anchor-id="add-">ADD———-</h5>
-<p>Add extra maps, charts, commentary</p>
+<section id="map" class="level3">
+<h3 class="anchored" data-anchor-id="map">Map</h3>
+<p>The highest housing vacancy rates in 2016 clustered in North and West Philadelphia. Mt. Airy appears to have had a low housing vacancy rate at that time.</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>()<span class="sc">+</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_sf</span>(<span class="at">data =</span> allACS, </span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>          <span class="fu">aes</span>(<span class="at">fill =</span> vacancyPct<span class="fl">.2016</span> <span class="sc">*</span> <span class="dv">100</span>),</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>          <span class="at">color =</span> <span class="st">"transparent"</span>)<span class="sc">+</span></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_sf</span>(<span class="at">data =</span> mt_airy,</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>          <span class="at">color =</span> <span class="st">"white"</span>,</span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>          <span class="at">fill =</span> <span class="st">"transparent"</span>)<span class="sc">+</span></span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>  viridis<span class="sc">::</span><span class="fu">scale_fill_viridis</span>(<span class="at">option =</span> <span class="st">"viridis"</span>, <span class="at">guide =</span> <span class="st">"colorbar"</span>) <span class="sc">+</span></span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">"Percentage of vacant housing units"</span>,</span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">subtitle =</span> <span class="st">"per Census tract, 2016"</span>,</span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">caption =</span> <span class="st">"Data: US Census Bureau, ACS 5-year estimates"</span>) <span class="sc">+</span></span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_void</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="intro_to_tidycensus_files/figure-html/ggplot_geom_sf%20vacancy-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+<section id="table" class="level3">
+<h3 class="anchored" data-anchor-id="table">Table</h3>
+<p>Below is a summary table showing the average number of vacant housing units per tract for Mt. Airy vs.&nbsp;the rest Philadelphia as a whole in 2020. The data indicate that, on average, tracts in Mt. Airy have fewer vacant units than tracts in the rest of the city.</p>
+<div class="cell">
+<details>
+<summary>Show the code</summary>
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>summaryTable3 <span class="ot">&lt;-</span> allACS <span class="sc">%&gt;%</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(mtAiry) <span class="sc">%&gt;%</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">st_drop_geometry</span>() <span class="sc">%&gt;%</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarize</span>(<span class="at">mean_vacant_units =</span> <span class="fu">mean</span>(total_vacant<span class="fl">.2020</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>summaryTable3 <span class="sc">%&gt;%</span> </span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kbl</span>() <span class="sc">%&gt;%</span></span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kable_styling</span>(<span class="at">bootstrap_options =</span> <span class="fu">c</span>(<span class="st">"striped"</span>, <span class="st">"hover"</span>, <span class="st">"condensed"</span>, <span class="st">"responsive"</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+
+<table class="table table-striped table-hover table-condensed table-responsive" style="margin-left: auto; margin-right: auto;">
+ <thead>
+  <tr>
+   <th style="text-align:left;"> mtAiry </th>
+   <th style="text-align:right;"> mean_vacant_units </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:left;"> MT AIRY </td>
+   <td style="text-align:right;"> 156.625 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> REST OF PHILADELPHIA </td>
+   <td style="text-align:right;"> 196.893 </td>
+  </tr>
+</tbody>
+</table>
+
+</div>
+</div>
 </section>
 </section>
-<section id="assignment" class="level1">
-<h1>Assignment</h1>
-<ul>
-<li>Check the class canvas page to see how this particular markdown needs to be edited to form your first assignment. If there is time in class, begin the assignment!</li>
-</ul>
 </section>
 
 </main>
