@@ -507,6 +507,9 @@ ggplot()+
 
 # Discussion 
 
+##### DELETE----------------
+Delete things below here
+
 - How would you describe the income and demographic statistics and trends in Mt. Airy relative to those of Philadelphia as a whole?
 
 - Do you have a particular hypothesis about "stories" about Mt. Airy based on a look at the data in a spatial format?
@@ -514,6 +517,9 @@ ggplot()+
 - What do you think about the similarities and differences within the neighborhood? How can you probe at those using these data?
 
 - Can you think of any other ways to subdivide the data we looked at in class to glean more insights about Mt. Airy?
+
+##### ADD----------
+Add extra maps, charts, commentary
 
 # Assignment
 
