@@ -1,0 +1,246 @@
+---
+title: "Lab 2 - Indicators"
+author: "Nissim Lebovits"
+date: today
+format: 
+  html:
+    toc: true
+    theme: flatly
+    code-fold: true
+    code-summary: "Show the code"
+editor: visual
+execute:
+  warning: false
+  error: false
+  messages: false
+  echo: true
+  cache: false
+---
+
+## Intro
+
+Prepare a policy brief for the local City Council representatives. Do households value transit-rich neighborhoods compared to others? How certain can you be about your conclusions given some of the spatial biases we’ve discussed? You must choose a city with open transit station data. (You may do this analysis using data from the 2000 decennial census - as in the book - as the first time period in the analysis OR you may use 2009 ACS 5-year estimates. You may use ACS data of a recent year in place of 2017 if you wish).
+
+Prepare an accessible (non-technical) R markdown document with the following deliverables. Provide a brief motivation at the beginning, annotate each visualization appropriately, and then provide brief policy-relevant conclusions. Please do not suppress code blocks - but you should fold them to make your assignment more legible. Here are the specific deliverables:
+
+Show your data wrangling work.
+
+1) Four small-multiple (2000 /2009 & 2017+) visualizations comparing four selected Census variables across time and space (TOD vs. non-TOD).
+2) One grouped bar plot making these same comparisons.
+3) One table making these same comparisons.
+4) Create two graduated symbol maps of population and rent within 0.5 mile of each transit station. Google for more information, but a graduate symbol map represents quantities for each transit station proportionally.
+5) Create a geom_line plot that shows mean rent as a function of distance to subway stations (Figure 1.17). To do this you will need to use the multipleRingBuffer function found in the functions.R script.
+
+```{r setup}
+library(tidyverse)
+library(tidycensus)
+library(sf)
+library(ggthemr)
+library(kableExtra)
+library(tmap)
+library(janitor)
+library(sfdep)
+library(arcpullr)
+
+source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
+
+options(tigris_use_cache = TRUE, scipen = 999)
+tmap_mode('view')
+ggthemr('flat')
+
+state <- "CA"
+county <- "San Francisco"
+crs <- 'EPSG:7132' # NAD 1983 us feet for san fran
+acs_vars <- c("B25026_001E",
+              "B02001_002E",
+              "B15001_050E",
+              "B15001_009E",
+              "B19013_001E", 
+              "B25058_001E",
+              "B06012_002E")
+
+palette5 <- c("#f0f9e8","#bae4bc","#7bccc4","#43a2ca","#0868ac")
+```
+
+
+```{r acs}
+suppressMessages(
+tracts16 <- get_acs(geography = "tract",
+                    variables = acs_vars, 
+                    year=2016, 
+                    state=state,
+                    county=county, 
+                    geometry=TRUE,
+                    output = "wide") %>% 
+          st_transform(crs = crs) %>%
+          rename(TotalPop = B25026_001E, 
+                 Whites = B02001_002E,
+                 FemaleBachelors = B15001_050E, 
+                 MaleBachelors = B15001_009E,
+                 MedHHInc = B19013_001E, 
+                 MedRent = B25058_001E,
+                 TotalPoverty = B06012_002E) %>%
+          mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop, 0),
+                 pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop), 0),
+                 pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
+                 year = "2016") %>%
+          dplyr::select(-Whites, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -ends_with("M")) %>%
+          filter(!st_is_empty(geometry)) %>% ## there's a tract with an empty geom; drop it
+          mutate(nb = as.character(st_contiguity(geometry))) %>%
+          filter(nb != 0) #filter out tracts not on the mainland (i.e., w no contiguous neighbors)
+)
+
+suppressMessages(
+tracts20 <- get_acs(geography = "tract",
+                    variables = acs_vars, 
+                    year=2020, 
+                    state=state,
+                    county=county, 
+                    geometry=TRUE,
+                    output = "wide") %>% 
+          st_transform(crs = crs) %>%
+          rename(TotalPop = B25026_001E, 
+                 Whites = B02001_002E,
+                 FemaleBachelors = B15001_050E, 
+                 MaleBachelors = B15001_009E,
+                 MedHHInc = B19013_001E, 
+                 MedRent = B25058_001E,
+                 TotalPoverty = B06012_002E) %>%
+          mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop, 0),
+                 pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop), 0),
+                 pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
+                 year = "2016") %>%
+          dplyr::select(-Whites, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -ends_with("M")) %>%
+          filter(!st_is_empty(geometry)) %>% ## there's a tract with an empty geom; drop it
+          mutate(nb = as.character(st_contiguity(geometry))) %>%
+          filter(nb != 0) #filter out tracts not on the mainland (i.e., w no contiguous neighbors)
+)
+
+allTracts <- rbind(tracts16,tracts20)
+```
+
+```{r year facet map}
+tmap_mode('view')
+
+tm_shape(allTracts) +
+  tm_polygons(col = "TotalPop", alpha = 0.7, border.alpha = 0, style = "quantile", palette = "magma") +
+  tm_layout(frame = FALSE) +
+  tm_facets(by = "year", nrow = 2)
+```
+
+```{r transit import}
+#|cache: true
+#|messages: false
+
+# Define the function to assign datasets to objects in the environment
+assign_dataset <- function(url, name) {
+  tryCatch({
+    dataset <- get_spatial_layer(url)
+    assign(name, dataset, envir = .GlobalEnv)
+  }, error = function(err) {
+    if (grepl("return_geometry is NULL", conditionMessage(err))) {
+      dataset <- get_table_layer(url)
+      assign(name, dataset, envir = .GlobalEnv)
+    } else {
+      stop(err)
+    }
+  })
+}
+
+# sf data
+sf_server <- 'https://services3.arcgis.com/i2dkYWmb4wHvYPda/arcgis/rest/services/'
+sf_datasets <- c(
+  'Transit_Stops_-_Major_(2021)',
+  'transitroutes_01_2020'
+)
+queries <- '/FeatureServer/0'
+sf_names <- sf_datasets %>% make_clean_names()
+
+# Initialize an empty list to store the generated URLs
+sf_url_list <- list()
+
+# Generate the URLs
+for (dataset in sf_datasets) {
+  url <- paste0(sf_server, dataset, queries)
+  sf_url_list <- c(sf_url_list, url)
+}
+
+suppressMessages(
+Map(assign_dataset, sf_url_list, sf_names)
+)
+
+sfmta_rail_stops <- transit_stops_major_2021 %>% filter(agency_id == "SF", route_type == "Tram, Streetcar, Light Rail") %>% st_transform(crs = crs)
+sfmta_rail_routes <- transitroutes_01_2020 %>% filter(agency_id == "SF", route_type == "Tram, Streetcar, Light rail") %>% st_transform(crs = crs)
+```
+
+```{r muni metro}
+tm_shape(sfmta_rail_routes) +
+  tm_lines() +
+tm_shape(sfmta_rail_stops) +
+  tm_dots()
+```
+```{r metro buffer}
+#| cache: true
+sfmta_rail_stops_buffer <- st_buffer(sfmta_rail_stops, 2640) %>% mutate(Legend = "Buffer") %>% dplyr::select(Legend)
+sfmta_rail_stops_buffer_union <- st_union(st_buffer(sfmta_rail_stops, 2640)) %>% st_sf() %>% mutate(Legend = "Unioned Buffer") %>% st_make_valid()
+# sfmta_buffers <- rbind(sfmta_rail_stops_buffer, sfmta_rail_stops_buffer_union)
+```
+
+
+```{r}
+tm_shape(sfmta_rail_stops_buffer_union) +
+  tm_polygons(col = "lightblue", alpha = 0.5, border.alpha = 0) +
+tm_shape(sfmta_rail_routes) +
+  tm_lines() +
+tm_shape(sfmta_rail_stops) +
+  tm_dots() + 
+  tm_scale_bar(position=c("left", "bottom"))
+```
+
+```{r tracts clip}
+# suppressWarnings(
+# clip <- st_intersection(sfmta_rail_stops_buffer_union, tracts16) %>%
+#   dplyr::select(TotalPop) %>%
+#   mutate(Selection_Type = "Clip")
+# )
+
+suppressWarnings(
+  selectCentroids <- st_centroid(tracts16)[sfmta_rail_stops_buffer_union, ] %>%
+                        st_drop_geometry() %>%
+                        left_join(., dplyr::select(tracts16, GEOID), by = "GEOID") %>%
+                        st_sf() %>%
+                        dplyr::select(TotalPop) %>%
+                        mutate(Selection_Type = "Select by Centroids")
+)
+```
+
+```{r map clip}
+tm_shape(selectCentroids) +
+  tm_polygons(alpha = 0.4, border.col = "white", col = "TotalPop", palette = "magma") +
+tm_shape(sfmta_rail_routes) +
+  tm_lines() +
+tm_shape(sfmta_rail_stops) +
+  tm_dots() + 
+  tm_scale_bar(position=c("left", "bottom"))
+```
+
+## Buffers
+
+## Intersections
+
+## Spatial Clip
+
+## Spatial Intersections
+
+## Small Multiple of Three Operations
+
+### Indicator Maps
+
+### TOD Indicator Tables
+
+### TOD Indicator Plots
+
+#### Examining Three Submarkets
+
+### Using the `multipleRingBuffer()` Function
+
