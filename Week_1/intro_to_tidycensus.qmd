@@ -332,7 +332,7 @@ ggplot(allACS) +
 
 # Spatial Data and Tidycensus
 
-Using the `sf` format of our dat, I'll map the distribution of race across Philadelphia.
+Using the `sf` format of our dat, I'll map the distribution of race across Philadelphia. Note that several tracts are missing due to mismatches between 2016 GEOIDs and 2020 GEOIDs.
 
 ```{r ggplot_geom_sf}
 mt_airy <- allACS %>% filter(mtAiry == "MT AIRY") %>% st_union() %>% st_as_sf()
