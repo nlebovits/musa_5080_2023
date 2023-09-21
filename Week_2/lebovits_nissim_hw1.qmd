@@ -17,6 +17,28 @@ execute:
   cache: false
 ---
 
+## Executive Summary
+
+- Define TOD
+- TOD gaining national prominence
+- Explain that we have looked at the relationship between proximity to transit and rent prices
+- In San Francisco, proximity to transit appears to be inversely related to median rent prices. This suggests that amenities other than transit access may exert a stronger influence over renters' willingness to pay higher prices.
+
+## Introduction
+
+- What is TOD?
+- What data are we looking at?
+- Why do we care?
+
+## Research Overview
+- What data are we looking at? Sources, years, etc.
+- What questions will we try to ansewr?
+
+## Discussion and Analysis
+- What are we seeing in the data? Spatial or temporal trends?
+
+## Conclusion or Recommendation
+
 ## Intro
 
 Prepare a policy brief for the local City Council representatives. Do households value transit-rich neighborhoods compared to others? How certain can you be about your conclusions given some of the spatial biases we've discussed? You must choose a city with open transit station data. (You may do this analysis using data from the 2000 decennial census - as in the book - as the first time period in the analysis OR you may use 2009 ACS 5-year estimates. You may use ACS data of a recent year in place of 2017 if you wish).
@@ -46,7 +68,7 @@ source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-L
 
 options(tigris_use_cache = TRUE, scipen = 999)
 tmap_mode('view')
-ggthemr('flat dark')
+ggthemr('flat')
 
 state <- "CA"
 county <- "San Francisco"
@@ -63,57 +85,45 @@ palette5 <- c("#f0f9e8","#bae4bc","#7bccc4","#43a2ca","#0868ac")
 ```
 
 ```{r acs}
-suppressMessages(
-tracts10 <- get_acs(geography = "tract",
-                    variables = acs_vars, 
-                    year=2010, 
-                    state=state,
-                    county=county, 
-                    geometry=TRUE,
-                    output = "wide") %>% 
-          st_transform(crs = crs) %>%
-          rename(TotalPop = B25026_001E, 
-                 Whites = B02001_002E,
-                 FemaleBachelors = B15001_050E, 
-                 MaleBachelors = B15001_009E,
-                 MedHHInc = B19013_001E, 
-                 MedRent = B25058_001E,
-                 TotalPoverty = B06012_002E) %>%
-          mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop, 0),
-                 pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop), 0),
-                 pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
-                 year = "2010") %>%
-          dplyr::select(-Whites, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -ends_with("M")) %>%
-          filter(!st_is_empty(geometry)) %>% ## there's a tract with an empty geom; drop it
-          mutate(nb = as.character(st_contiguity(geometry))) %>%
-          filter(nb != 0) #filter out tracts not on the mainland (i.e., w no contiguous neighbors)
-)
+get_vars <- function(year) {
+  suppressMessages(
+      tracts10 <- get_acs(geography = "tract",
+                          variables = acs_vars, 
+                          year=year, 
+                          state=state,
+                          county=county, 
+                          geometry=TRUE,
+                          output = "wide") %>% 
+                st_transform(crs = crs) %>%
+                rename(TotalPop = B25026_001E, 
+                       Whites = B02001_002E,
+                       FemaleBachelors = B15001_050E, 
+                       MaleBachelors = B15001_009E,
+                       MedHHInc = B19013_001E, 
+                       MedRent = B25058_001E,
+                       TotalPoverty = B06012_002E) %>%
+                mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop, 0),
+                       pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop), 0),
+                       pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
+                       year = as.character(year)) %>%
+                dplyr::select(-Whites, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -ends_with("M")) %>%
+                filter(!st_is_empty(geometry), ## there's a tract with an empty geom; drop it
+                        GEOID != "06075980401") # %>% # drop Alcatraz
+                # mutate(nb = as.character(st_contiguity(geometry))) %>%
+                # filter(nb != 0) #filter out tracts not on the mainland (i.e., w no contiguous neighbors)
+                        |> 
+                    mutate(
+                      nb = st_knn(geometry, 5),
+                      wt = st_weights(nb),
+                      MedRent = ifelse(is.na(MedRent), purrr::map_dbl(find_xj(MedRent, nb), mean, na.rm = TRUE), MedRent)) # this code replaces NA values with the mean of the 5 nearest neighbor tracts.
+                                                                                                                          # I came up with this method as part of my research for Prof. Lassiter
+                                                                                                                          # and find that the Pearson's coefficient between actual tract value 
+                                                                                                                          # and mean of knn tracts is highest when k = 5. 
+                                  )
+}
 
-suppressMessages(
-tracts20 <- get_acs(geography = "tract",
-                    variables = acs_vars, 
-                    year=2020, 
-                    state=state,
-                    county=county, 
-                    geometry=TRUE,
-                    output = "wide") %>% 
-          st_transform(crs = crs) %>%
-          rename(TotalPop = B25026_001E, 
-                 Whites = B02001_002E,
-                 FemaleBachelors = B15001_050E, 
-                 MaleBachelors = B15001_009E,
-                 MedHHInc = B19013_001E, 
-                 MedRent = B25058_001E,
-                 TotalPoverty = B06012_002E) %>%
-          mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop, 0),
-                 pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop), 0),
-                 pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
-                 year = "2020") %>%
-          dplyr::select(-Whites, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -ends_with("M")) %>%
-          filter(!st_is_empty(geometry)) %>% ## there's a tract with an empty geom; drop it
-          mutate(nb = as.character(st_contiguity(geometry))) %>%
-          filter(nb != 0) #filter out tracts not on the mainland (i.e., w no contiguous neighbors)
-)
+tracts10 <- get_vars(2010)
+tracts20 <- get_vars(2020)
 
 allTracts <- rbind(tracts10, tracts20)
 allTracts <- allTracts %>%
@@ -121,12 +131,10 @@ allTracts <- allTracts %>%
 ```
 
 ```{r year facet map}
-tmap_mode('view')
-
 tm_shape(allTracts) +
-  tm_polygons(col = "TotalPop", alpha = 0.7, border.alpha = 0, style = "quantile", palette = "magma") +
+  tm_polygons(col = "TotalPop", alpha = 0.7, border.alpha = 0, style = "quantile", palette = palette5) +
   tm_layout(frame = FALSE) +
-  tm_facets(by = "year", nrow = 2)
+  tm_facets(by = "year", ncol = 2)
 ```
 
 ```{r transit import}
@@ -174,13 +182,64 @@ Map(assign_dataset, sf_url_list, sf_names)
 sfmta_rail_stops <- transit_stops_major_2021 %>% filter(agency_id == "SF", route_type == "Tram, Streetcar, Light Rail") %>% st_transform(crs = crs)
 sfmta_rail_routes <- transitroutes_01_2020 %>% filter(agency_id == "SF", route_type == "Tram, Streetcar, Light rail") %>% st_transform(crs = crs)
 
-sfmta_rail_stops_buffer <- st_buffer(sfmta_rail_stops, 2640) %>% mutate(Legend = "Buffer") %>% dplyr::select(Legend)
+sfmta_rail_stops_buffer <- st_buffer(sfmta_rail_stops, 2640) %>% distinct(geoms, .keep_all = TRUE) %>% filter(!is.na(stop_id)) %>% mutate(Legend = "Buffer")
+rownames(sfmta_rail_stops_buffer) <- sfmta_rail_stops_buffer$stop_id
 sfmta_rail_stops_buffer_union <- st_union(st_buffer(sfmta_rail_stops, 2640)) %>% st_sf() %>% mutate(Legend = "Unioned Buffer") %>% st_make_valid()
+```
+
+```{r grad symbols}
+
+### 2010
+rent10 <- tracts10["MedRent"]
+pop10 <- tracts10["TotalPop"]
+
+tracts10RentInterp <- st_interpolate_aw(rent10, sfmta_rail_stops_buffer, extensive = FALSE)
+tracts10PopInterp <- st_interpolate_aw(pop10, sfmta_rail_stops_buffer, extensive = TRUE)
+
+tracts10Interp <- as.data.frame(sfmta_rail_stops_buffer$stop_id)
+tracts10Interp$medRent <- tracts10RentInterp$MedRent
+tracts10Interp$totPop <- tracts10PopInterp$TotalPop
+tracts10Interp$geometry <- sfmta_rail_stops_buffer$geoms
+tracts10Interp <- tracts10Interp %>% st_as_sf(crs = crs)
+
+t10iRent <- tm_shape(tracts10Interp) +
+  tm_dots(col = "medRent", size = "medRent", border.alpha = 0, alpha = 0.5, palette = palette5, style = "quantile") +
+  tm_view(view.legend.position = c("left", "bottom"))
+
+t10iPop <- tm_shape(tracts10Interp) +
+  tm_dots(col = "totPop", size = "totPop", border.alpha = 0, alpha = 0.5, palette = palette5, style = "quantile") +
+  tm_view(view.legend.position = c("left", "bottom"))
+
+### 2020
+rent20 <- tracts20["MedRent"]
+pop20 <- tracts20["TotalPop"]
+
+tracts20RentInterp <- st_interpolate_aw(rent20, sfmta_rail_stops_buffer, extensive = FALSE)
+tracts20PopInterp <- st_interpolate_aw(pop20, sfmta_rail_stops_buffer, extensive = TRUE)
+
+tracts20Interp <- as.data.frame(sfmta_rail_stops_buffer$stop_id)
+tracts20Interp$medRent <- tracts20RentInterp$MedRent
+tracts20Interp$totPop <- tracts20PopInterp$TotalPop
+tracts20Interp$geometry <- sfmta_rail_stops_buffer$geoms
+tracts20Interp <- tracts20Interp %>% st_as_sf(crs = crs)
+
+t20iRent <- tm_shape(tracts20Interp) +
+  tm_dots(col = "medRent", size = "medRent", border.alpha = 0, alpha = 0.5, palette = palette5, style = "quantile") +
+  tm_view(view.legend.position = c("left", "bottom"))
+
+t20iPop <- tm_shape(tracts20Interp) +
+  tm_dots(col = "totPop", size = "totPop", border.alpha = 0, alpha = 0.5, palette = palette5, style = "quantile") +
+  tm_view(view.legend.position = c("left", "bottom"))
+
+
+tmap_arrange(t10iPop, t20iPop)
+tmap_arrange(t10iRent, t20iRent)
+
 ```
 
 ```{r metro buffer}
 tm_shape(sfmta_rail_stops_buffer_union) +
-  tm_polygons(col = "lightblue", alpha = 0.5, border.alpha = 0) +
+  tm_polygons(col = palette5[3], alpha = 0.5, border.alpha = 0) +
 tm_shape(sfmta_rail_routes) +
   tm_lines() +
 tm_shape(sfmta_rail_stops) +
@@ -215,20 +274,15 @@ tractsGroup <- rbind(selectCentroids, antiSelectCentroids)
 
 ```{r tract comp}
 tm_shape(tractsGroup) +
-  tm_polygons(alpha = 0.4, border.col = "white", col = "TOD", palette = "magma") +
+  tm_polygons(alpha = 0.4, border.col = "white", col = "TOD", palette = c(palette5[4], palette5[1])) +
 tm_facets(by = "year")
-# tm_shape(sfmta_rail_routes) +
-#   tm_lines() +
-# tm_shape(sfmta_rail_stops) +
-#   tm_dots() + 
-#   tm_scale_bar(position=c("left", "bottom"))
 ```
 
 (Need to add captions, etc. here.)
 
 ```{r map clip}
 tm_shape(tractsGroup) +
-  tm_polygons(alpha = 0.4, border.col = "white", col = "medRent", style = "quantile", palette = "magma") +
+  tm_polygons(alpha = 0.4, border.col = "white", col = "medRent", style = "quantile", palette = palette5) +
 tm_facets(by = "year") +
 tm_shape(sfmta_rail_routes) +
   tm_lines() +
@@ -265,7 +319,7 @@ allTracts.Summary %>%
   gather(Variable, Value, -year, -TOD) %>%
   ggplot(aes(year, Value, fill = TOD)) +
     geom_bar(stat = "identity", position = "dodge") +
-    facet_wrap(~Variable, scales = "free", ncol=5) +
+    facet_wrap(~Variable, scales = "free", ncol=3) +
     scale_fill_manual(values = c("#bae4bc", "#0868ac")) +
     labs(title = "Indicator differences across time and space") +
     plotTheme() + 
@@ -303,23 +357,3 @@ ggplot(rentXDist, aes(x = as.numeric(milesToRail), y = avgRent, color = year)) +
   scale_y_continuous(limits = c(0, NA))
 ```
 
-
-## Buffers
-
-## Intersections
-
-## Spatial Clip
-
-## Spatial Intersections
-
-## Small Multiple of Three Operations
-
-### Indicator Maps
-
-### TOD Indicator Tables
-
-### TOD Indicator Plots
-
-#### Examining Three Submarkets
-
-### Using the `multipleRingBuffer()` Function
