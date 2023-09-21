@@ -1,5 +1,5 @@
 ---
-title: "Lab 2 - Indicators"
+title: "Impact of TOD on Rent in San Francisco"
 author: "Nissim Lebovits"
 date: today
 format: 
@@ -18,42 +18,28 @@ execute:
 ---
 
 ## Executive Summary
+Transit-oriented development (TOD) is an approach to urban planning that prioritizes "compact, walkable, pedestrian-oriented, mixed-use communities centered around high quality train systems."[^1] TOD is gaining national prominence for its many benefits, one of which is potentially promoting affordable housing. In this report, we examine the relationship between proximity to transit and rent prices in San Francisco. We find that proximity to transit appears to be inversely related to rent prices. This suggests that amenities other than transit access may exert a stronger influence over renters' willingness to pay higher prices. It is also possible that higher-density housing is prevalent around transit stops, thus increasing housing supply in these areas. Given the urgency of the affordable housing crisis in this region, this initial investigation should motivate further research to better understand how access to transit influences rental affordability in San Francisco.
 
-- Define TOD
-- TOD gaining national prominence
-- Explain that we have looked at the relationship between proximity to transit and rent prices
-- In San Francisco, proximity to transit appears to be inversely related to median rent prices. This suggests that amenities other than transit access may exert a stronger influence over renters' willingness to pay higher prices.
+[^1]: http://www.tod.org/
 
 ## Introduction
+Transit-oriented development is an approach to urban planning that prioritizes "compact, walkable, pedestrian-oriented, mixed-use communities centered around high quality train systems."[^2] TOD can have many benefits, such as economic revitalization and improved air quality (Figure 1).[^3] As a result of these amenities, and sometimes as a specific goal of the TOD implementation itself, TOD can have significant impacts on rent prices in the surrounding neighborhood. However, these impacts are highly dependent on context and implementation. In some cases, TOD can promote housing affordability, while in others it can drive gentrification and rapid rental price increases. Given San Francisco's current struggles with housing affordability, it is important to understand the impact of proximity to transit on rent prices in this particular context.
 
-- What is TOD?
-- What data are we looking at?
-- Why do we care?
+[^2]: http://www.tod.org/
+
+[^3]: https://www.transit.dot.gov/TOD
+
+![Figure 1: Benefits of TOD (Source: FTA)](tod_benefits_fta.png)
 
 ## Research Overview
-- What data are we looking at? Sources, years, etc.
-- What questions will we try to ansewr?
+This report uses data from the 2010 and 2020 [American Community Survey](https://www.census.gov/programs-surveys/acs) (ACS) to explore the relationship between rent prices and proximity to transit. These dates are chosen in order to ensure that the analysis isn't based on aberrant data (e.g., the rapid changes in rental prices driven by the COVID-19 pandemic). Data on transit locations come from [San Francisco's Open Data Portal](https://datasf.org/). Below, we will try to understand whether there is any meaningful relationship between rent prices and proximity to transit in San Francisco and, if so, what that relationship looks like.
 
-## Discussion and Analysis
-- What are we seeing in the data? Spatial or temporal trends?
+```{r setup and import}
+#| messages: false
+#| output: false
 
-## Conclusion or Recommendation
+####Setup------------------------------
 
-## Intro
-
-Prepare a policy brief for the local City Council representatives. Do households value transit-rich neighborhoods compared to others? How certain can you be about your conclusions given some of the spatial biases we've discussed? You must choose a city with open transit station data. (You may do this analysis using data from the 2000 decennial census - as in the book - as the first time period in the analysis OR you may use 2009 ACS 5-year estimates. You may use ACS data of a recent year in place of 2017 if you wish).
-
-Prepare an accessible (non-technical) R markdown document with the following deliverables. Provide a brief motivation at the beginning, annotate each visualization appropriately, and then provide brief policy-relevant conclusions. Please do not suppress code blocks - but you should fold them to make your assignment more legible. Here are the specific deliverables:
-
-Show your data wrangling work.
-
-1)  Four small-multiple (2000 /2009 & 2017+) visualizations comparing four selected Census variables across time and space (TOD vs. non-TOD).
-2)  One grouped bar plot making these same comparisons.
-3)  One table making these same comparisons.
-4)  Create two graduated symbol maps of population and rent within 0.5 mile of each transit station. Google for more information, but a graduate symbol map represents quantities for each transit station proportionally.
-5)  Create a geom_line plot that shows mean rent as a function of distance to subway stations (Figure 1.17). To do this you will need to use the multipleRingBuffer function found in the functions.R script.
-
-```{r setup}
 library(tidyverse)
 library(tidycensus)
 library(sf)
@@ -63,6 +49,7 @@ library(tmap)
 library(janitor)
 library(sfdep)
 library(arcpullr)
+library(ggpubr)
 
 source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
 
@@ -82,12 +69,14 @@ acs_vars <- c("B25026_001E",
               "B06012_002E")
 
 palette5 <- c("#f0f9e8","#bae4bc","#7bccc4","#43a2ca","#0868ac")
-```
+palette2 <- c(palette5[4], palette5[2])
+set_swatch(palette5)
 
-```{r acs}
+
+####Pull Census------------------------------
 get_vars <- function(year) {
   suppressMessages(
-      tracts10 <- get_acs(geography = "tract",
+      tracts <- get_acs(geography = "tract",
                           variables = acs_vars, 
                           year=year, 
                           state=state,
@@ -124,24 +113,12 @@ get_vars <- function(year) {
 
 tracts10 <- get_vars(2010)
 tracts20 <- get_vars(2020)
-
 allTracts <- rbind(tracts10, tracts20)
 allTracts <- allTracts %>%
               mutate(medRent = ifelse(year == "2010", MedRent * 1.19, MedRent)) #per BLS: https://data.bls.gov/cgi-bin/cpicalc.pl?cost1=1&year1=201001&year2=202001
-```
 
-```{r year facet map}
-tm_shape(allTracts) +
-  tm_polygons(col = "TotalPop", alpha = 0.7, border.alpha = 0, style = "quantile", palette = palette5) +
-  tm_layout(frame = FALSE) +
-  tm_facets(by = "year", ncol = 2)
-```
 
-```{r transit import}
-#| cache: true
-#| messages: false
-#| include: false
-
+####Pull SFMTA------------------------------
 # Define the function to assign datasets to objects in the environment
 assign_dataset <- function(url, name) {
   tryCatch({
@@ -185,9 +162,24 @@ sfmta_rail_routes <- transitroutes_01_2020 %>% filter(agency_id == "SF", route_t
 sfmta_rail_stops_buffer <- st_buffer(sfmta_rail_stops, 2640) %>% distinct(geoms, .keep_all = TRUE) %>% filter(!is.na(stop_id)) %>% mutate(Legend = "Buffer")
 rownames(sfmta_rail_stops_buffer) <- sfmta_rail_stops_buffer$stop_id
 sfmta_rail_stops_buffer_union <- st_union(st_buffer(sfmta_rail_stops, 2640)) %>% st_sf() %>% mutate(Legend = "Unioned Buffer") %>% st_make_valid()
-```
 
-```{r grad symbols}
+getTODTracts <- function(op, TOD) {
+  suppressWarnings(
+  TODTracts <- st_centroid(allTracts)[sfmta_rail_stops_buffer_union, op = op] %>%
+                    st_drop_geometry() %>%
+                    left_join(., dplyr::select(allTracts, GEOID), by = "GEOID") %>%
+                    distinct(GEOID, year, .keep_all = TRUE) %>%
+                    st_sf() %>%
+                    mutate(TOD = TOD)
+  )
+}
+
+selectCentroids <- getTODTracts(st_intersects, "TOD")
+antiSelectCentroids <- getTODTracts(st_disjoint, "Non-TOD")
+tractsGroup <- rbind(selectCentroids, antiSelectCentroids)
+
+
+####Interpolate tract data to transit catchments------------------------------
 
 ### 2010
 rent10 <- tracts10["MedRent"]
@@ -202,14 +194,6 @@ tracts10Interp$totPop <- tracts10PopInterp$TotalPop
 tracts10Interp$geometry <- sfmta_rail_stops_buffer$geoms
 tracts10Interp <- tracts10Interp %>% st_as_sf(crs = crs)
 
-t10iRent <- tm_shape(tracts10Interp) +
-  tm_dots(col = "medRent", size = "medRent", border.alpha = 0, alpha = 0.5, palette = palette5, style = "quantile") +
-  tm_view(view.legend.position = c("left", "bottom"))
-
-t10iPop <- tm_shape(tracts10Interp) +
-  tm_dots(col = "totPop", size = "totPop", border.alpha = 0, alpha = 0.5, palette = palette5, style = "quantile") +
-  tm_view(view.legend.position = c("left", "bottom"))
-
 ### 2020
 rent20 <- tracts20["MedRent"]
 pop20 <- tracts20["TotalPop"]
@@ -223,19 +207,21 @@ tracts20Interp$totPop <- tracts20PopInterp$TotalPop
 tracts20Interp$geometry <- sfmta_rail_stops_buffer$geoms
 tracts20Interp <- tracts20Interp %>% st_as_sf(crs = crs)
 
-t20iRent <- tm_shape(tracts20Interp) +
-  tm_dots(col = "medRent", size = "medRent", border.alpha = 0, alpha = 0.5, palette = palette5, style = "quantile") +
-  tm_view(view.legend.position = c("left", "bottom"))
-
-t20iPop <- tm_shape(tracts20Interp) +
-  tm_dots(col = "totPop", size = "totPop", border.alpha = 0, alpha = 0.5, palette = palette5, style = "quantile") +
-  tm_view(view.legend.position = c("left", "bottom"))
-
-
-tmap_arrange(t10iPop, t20iPop)
-tmap_arrange(t10iRent, t20iRent)
-
+####Grad symbols map function------------------------------
+gradMap <- function(data, var, title){
+  map <- tm_shape(data) +
+  tm_symbols(col = var, size = var, border.col = "white", alpha = 0.5, palette = palette5, style = "quantile", scale = 3) +
+  tm_view(view.legend.position = c("left", "bottom")) +
+  tm_layout(title = title)
+}
 ```
+
+## Discussion and Analysis
+
+### Defining TOD
+In this report, we consider housing near SFMTA rail routes (trams, streetcars, and light rail) within the city limits.
+
+This map shows the routes and stops for these transit lines, along with a half-mile buffer around each stop to indicate the stop's approximate catchment area.
 
 ```{r metro buffer}
 tm_shape(sfmta_rail_stops_buffer_union) +
@@ -247,51 +233,19 @@ tm_shape(sfmta_rail_stops) +
   tm_scale_bar(position=c("left", "bottom"))
 ```
 
-There must be a better way to do this filtering
+\n
 
-```{r tracts clip}
+Based on these buffers, we label the underlying Census tracts as either TOD tracts or non-TOD tracts. This map of 2020 Census tracts shows the rough distribution of tracts, and is effectively equivalent with 2010 tracts, which differs only in trivial ways.
 
-suppressWarnings(
-selectCentroids <- st_centroid(allTracts)[sfmta_rail_stops_buffer_union, ] %>%
-                    st_drop_geometry() %>%
-                    left_join(., dplyr::select(allTracts, GEOID), by = "GEOID") %>%
-                    distinct(GEOID, year, .keep_all = TRUE) %>%
-                    st_sf() %>%
-                    mutate(TOD = "TOD")
-)
-
-suppressWarnings(
-  antiSelectCentroids <- st_centroid(allTracts)[sfmta_rail_stops_buffer_union, op = st_disjoint] %>%
-                        st_drop_geometry() %>%
-                        left_join(., dplyr::select(allTracts, GEOID), by = "GEOID") %>% 
-                        distinct(GEOID, year, .keep_all = TRUE) %>%
-                        st_sf() %>%
-                        mutate(TOD = "Non-TOD")
-)
-
-tractsGroup <- rbind(selectCentroids, antiSelectCentroids)
+```{r tod tracts}
+tm_shape(tractsGroup %>% filter(year == "2020")) +
+  tm_polygons(alpha = 0.4, border.col = "white", col = "TOD", palette = palette2)
 ```
 
-```{r tract comp}
-tm_shape(tractsGroup) +
-  tm_polygons(alpha = 0.4, border.col = "white", col = "TOD", palette = c(palette5[4], palette5[1])) +
-tm_facets(by = "year")
-```
+### Mapping Census Demographics
+Drawing on ACS data from 2010 and 2020, we can begin to understand how key demographics relate to proximity to transit. To begin with, we can look at how the overall demographics of TOD tracts compare to those of non-TOD tracts. Although the average population per tract is roughly equivalent in TOD and non-TOD tracts across years, we note some key differences: poverty rates tend to be substantially higher in TOD tracts than in non-TOD tracts, with a slightly higher percentage of minority residents as well. These trends hold true from 2010 to 2020. One important temporal change to note is that, while in 2010 TOD tracts had a lower percentage of college graduates, in 2020 they now have a higher rate of college graduates than non-TOD tracts. This may suggest the beginnings of gentrification in these areas. Notably for this investigation, rent is slightly lower on average in TOD tracts than in non-TOD tracts.
 
-(Need to add captions, etc. here.)
-
-```{r map clip}
-tm_shape(tractsGroup) +
-  tm_polygons(alpha = 0.4, border.col = "white", col = "medRent", style = "quantile", palette = palette5) +
-tm_facets(by = "year") +
-tm_shape(sfmta_rail_routes) +
-  tm_lines() +
-tm_shape(sfmta_rail_stops) +
-  tm_dots() + 
-  tm_scale_bar(position=c("left", "bottom")) 
-```
-
-```{r indicator table}
+```{r indicator tables and charts}
 allTracts.Summary <- 
   st_drop_geometry(tractsGroup) %>%
     group_by(year, TOD) %>%
@@ -302,30 +256,83 @@ allTracts.Summary <-
               Percent_Poverty = mean(pctPoverty, na.rm = T))
 
 kable(allTracts.Summary) %>%
-  kable_styling() %>%
-  footnote(general_title = "\n",
-           general = "Table 1.2")
-```
+  kable_styling()
 
-```{r facet}
 allTracts.Summary %>%
-  rename(
-    pctBach = Percent_Bach,
-    pctPov = Percent_Poverty,
-    pctWht = Percent_White,
-    pop = Population,
-    rent = Rent
-  ) %>%
   gather(Variable, Value, -year, -TOD) %>%
   ggplot(aes(year, Value, fill = TOD)) +
     geom_bar(stat = "identity", position = "dodge") +
     facet_wrap(~Variable, scales = "free", ncol=3) +
-    scale_fill_manual(values = c("#bae4bc", "#0868ac")) +
+      scale_fill_manual(values = palette2) +
     labs(title = "Indicator differences across time and space") +
-    plotTheme() + 
   theme(legend.position="bottom",
         aspect.ratio = 1)
 ```
+
+To explore these trends in more depth, we can analyze them in greater spatial detail by looking at city-wide maps.
+
+First, we explore population. Generally, total population per Census tract is higher closer to transit routes. Some change has occurred from 2010 to 2020, such as a loss of population in the downtown area and a gain in population south of the port, around Bayview.
+
+```{r total pop map}
+tm_shape(tractsGroup) +
+  tm_polygons(alpha = 0.4, border.col = "white", col = "TotalPop", style = "quantile", palette = palette5) +
+tm_facets(by = "year") +
+tm_shape(sfmta_rail_routes) +
+  tm_lines() +
+tm_shape(sfmta_rail_stops) +
+  tm_dots(alpha = 0, border.col = "black") + 
+  tm_scale_bar(position=c("left", "bottom")) 
+```
+
+Mapping rent, on the other hand, is much more complex. First, it is clear that rent in San Francisco has become dramatically more expensive from 2010 to 2020. Beyond that, however, some transit appears to pass through very expensive neighborhoods, while other transit appears to pass through more affordable neighborhoods. There is no obvious pattern of spatial clustering driven *specifically* by transit. Rather, it is possible that some areas like Yerba Buena, South Beach, and Mission Bay have other amenities that drive both the presence of transit and high rent prices.
+
+```{r med rent map}
+tm_shape(tractsGroup) +
+  tm_polygons(alpha = 0.4, border.col = "white", col = "medRent", style = "quantile", palette = palette5) +
+tm_facets(by = "year") +
+tm_shape(sfmta_rail_routes) +
+  tm_lines() +
+tm_shape(sfmta_rail_stops) +
+  tm_dots(alpha = 0, border.col = "black") + 
+  tm_scale_bar(position=c("left", "bottom")) 
+```
+
+### Mapping Demographics by Transit Catchment
+Aggregating ACS data to stop catchments can give us a more precise understanding of the distribution of these variables as it relates to transit. Based on these maps, we can see that population around transit stops tend to cluster in the downtown and midtown areas. This distribution has remained consistent from 2010 to 2020.
+
+```{r grad symbols pop}
+t10iPop <- gradMap(tracts10Interp, "totPop", "2010")
+t20iPop <- gradMap(tracts20Interp, "totPop", "2020")
+
+tmap_arrange(t10iPop, t20iPop)
+```
+
+On the other hand, median rent is highest precisely where population density is lowest: Yerba Buena, South Beach, and Mission Bay, for example. Midtown appears to balance between medium population density and medium rent prices, but in general, it appears that population density and median rent are anticorrelated.
+
+```{r grad symbols rent}
+t10iRent <- gradMap(tracts10Interp, "medRent", "2010")
+t20iRent <- gradMap(tracts20Interp, "medRent", "2020")
+tmap_arrange(t10iRent, t20iRent)
+```
+
+Indeed, by plotting these data against each other, we can see a strong negative correlation between population density and median rent for a given transit stop catchment area.
+
+```{r rent vs pop}
+tracts10Interp <- tracts10Interp %>% mutate(year = "2010")
+tracts20Interp <- tracts20Interp %>% mutate(year = "2020")
+rvp <- rbind(tracts10Interp, tracts20Interp)
+
+ggplot(rvp, aes(x = totPop, y = medRent)) +
+            geom_point(alpha = 0.5, col = palette5[4]) +
+            geom_smooth(method = "lm", se = FALSE, linetype = "dashed", linewidth = 0.5) +
+            labs(title = "Rent vs. Population per Transit Stop Catchment",
+                 x = "Total Population",
+                 y = "Median Rent") +
+            facet_wrap(~year)
+```
+
+### Rent versus Distance
+Returning to our initial question, we can calculate the average median rent per Census tract as a function of its distance to the nearest transit stop. In both 2010 and 2020, the average median rent per Census tract was anticorrelated with distance to the nearest transit stop. In other words, the *closer* a tract is to a transit stop, the *lower* the median rent is likely to be.
 
 ```{r dist to tract}
 
@@ -357,3 +364,11 @@ ggplot(rentXDist, aes(x = as.numeric(milesToRail), y = avgRent, color = year)) +
   scale_y_continuous(limits = c(0, NA))
 ```
 
+## Conclusion
+This report has found that:
+
+1.  Population density and median rent per transit stop catchment area are inversely related
+
+2.  Distance to the nearest transit stop and average median rent per Census tract are inversely related
+
+These findings suggest that proximity to transit is not an amenity that San Francisco residents are willing to pay extra for when renting. Furthermore, both these findings are intriguing given that one of the main promises of transit-oriented development is the promotion of affordable housing around transit stops. That said, these findings only refer to correlation, not causation. Further research will therefore be necessary to ascertain the underlying drivers of housing affordability around transit stops and how these may be leveraged to promote more affordable housing in San Francisco.
