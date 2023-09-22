@@ -68,11 +68,82 @@ ols_step_both_p(model)
 
 # things to add:
   # neighborhood (azavea)
+hoods <- st_read('https://raw.githubusercontent.com/azavea/geo-data/master/Neighborhoods_Philadelphia/Neighborhoods_Philadelphia.geojson', quiet = T) %>%
+          st_transform(crs = crs) %>%
+          select(mapname)
+
+data <- st_join(data, hoods)
+
+
+
   # crime raster layers
   # flooding?
   # race
   # income (these will be colinear)
+  # level of education?
+
+install.packages("tidycensus")
+library(tidycensus)
+
+options(tigris_use_cache = TRUE)
+
+acs_vars <- c("B25026_001E",
+              "B02001_002E",
+              "B15001_050E",
+              "B15001_009E",
+              "B19013_001E", 
+              "B25058_001E",
+              "B06012_002E")
+
+phl_acs <- get_acs(geography = "tract",
+                        variables = acs_vars, 
+                        year= 2020, 
+                        state= "PA",
+                        county= "Philadelphia", 
+                        geometry=TRUE,
+                        output = "wide") %>% 
+                  st_transform(crs = crs) %>%
+                  rename(totPop = B25026_001E, 
+                          white = B02001_002E,
+                         femaleBachelors = B15001_050E, 
+                         maleBachelors = B15001_009E,
+                         medHHInc = B19013_001E, 
+                         medRent = B25058_001E,
+                         totPov = B06012_002E) %>%
+                  mutate(pctWhite = ifelse(totPop > 0, white / totPop, 0),
+                         pctBach = ifelse(totPop > 0, ((femaleBachelors + maleBachelors) / totPop), 0),
+                         pctPov = ifelse(totPop > 0, totPov / totPop, 0)) %>%
+                  dplyr::select(-white, -femaleBachelors, -maleBachelors, -totPov, -ends_with("M")) %>%
+                  filter(!st_is_empty(geometry)) %>%
+                  select(totPop, medHHInc, medRent, pctWhite, pctBach, pctPov)
+
+data <- st_join(data, phl_acs)
+
+
+
   # tree canopy cover
+
+install.packages(c("sf", "curl", "zip"))
+library(sf)
+library(curl)
+library(zip)
+
+url <- "https://national-tes-data-share.s3.amazonaws.com/national_tes_share/pa.zip.zip"
+tmp_file <- tempfile(fileext = ".zip")
+curl_download(url, tmp_file)
+
+unzipped_folder_1 <- tempfile()
+unzip(tmp_file, exdir = unzipped_folder_1)
+shp_files <- list.files(unzipped_folder_1, pattern = "\\.shp$", recursive = TRUE, full.names = TRUE)
+tree_canopy_gap <- st_read(shp_files[1], quiet = TRUE)  # assuming there's only one .shp file
+phl_tree_canopy <- tree_canopy_gap %>%
+                      filter(state == "PA",
+                             county == "Philadelphia County") %>%
+                      transmute(tree_cover = 1 - tc_gap) %>%
+                      st_transform(crs = crs)
+
+data <- st_join(data, phl_tree_canopy)
+
   # proximity to parks
   # proximity to commercial corridor
 
