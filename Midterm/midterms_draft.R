@@ -238,42 +238,23 @@ sample <- sample_n(data, 20)
 tm_shape(corridors) +
   tm_polygons(col = 'darkgreen', border.alpha = 0, alpha = 0.5) +
 tm_shape(sample) +
-  tm_dots(col = 'dist_to_commerce')
-
-origins <- corridors # st_centroid(data$geometry)
-dests <- st_centroid(data$geometry) # corridors
-nearest_fts <- sf::st_nearest_feature(origins, dests)
-st_distance(origins, dests[nearest_fts], by_element = TRUE)
-
-### reverse
-origins <- st_centroid(data$geometry)
-dests <- corridors
-nearest_pts <- sf::st_nearest_points(origins, dests)
-st_distance(origins, dests[nearest_fts], by_element = TRUE)
+  tm_dots(col = 'dist_to_commerce') +
+tm_shape(point_sf) +
+  tm_dots()
 
 
-nearest_fts <- sf::st_nearest_feature(origins, dests)
-origins[nearest_fts] %>%
-  st_distance(dests, by_element = TRUE)
+downtown <- st_sfc(st_point(c(-75.16408, 39.95266)), crs = 4326)
+downtown_sf <- st_sf(geometry = point_geom)
+downtown_sf <- downtown_sf %>% st_transform(crs= crs)
 
-st_distance(dests[nearest_fts], origins, by_element = TRUE)
+nearest_fts <- sf::st_nearest_feature(data, downtown_sf)
 
+# convert to rsgeo geometries
+x <- rsgeo::as_rsgeo(origins)
+y <- rsgeo::as_rsgeo(downtown_sf)
 
-origins$nearest_fts <- sf::st_nearest_feature(origins, dests)
-origins$dist_to_commerce <- st_distance(dests, origins[nearest_fts], by_element = TRUE)
-
-origins <- st_centroid(data$geometry)
-dests <- corridors
-origins$nearest_fts <- sf::st_nearest_feature(origins, dests)
-origins$dist_to_commerce <- st_distance(dests, origins[nearest_fts], by_element = TRUE)
-
-data <- data %>%
-          rowwise() %>%
-          mutate(dist_to_commerce = as.numeric(min(st_distance(st_centroid(geometry), corridors$geometry)))) %>%
-          ungroup()
-
-# account for proximity to center city (bid rent model)
-downtown <- c(39.95268, -75.16505) %>% st_as_sf() %>% st_transform(crs = crs)
+# calculate distance
+data$dist_to_downtown <- rsgeo::distance_euclidean_pairwise(x, y[nearest_fts])
 
 ####
 
@@ -299,7 +280,7 @@ keep_vars <- c(ols_step_both_aic(model)$predictors, "sale_price")
 final_data <- dummied_data[, keep_vars]
 
 
-numeric_only <- data %>% st_drop_geometry() %>% select(where(is.numeric)) %>% select(-tree_cover)
+numeric_only <- data %>% st_drop_geometry() %>% select(where(is.numeric)) 
 model <- lm(sale_price ~ ., data = numeric_only)
 # ols_step_all_possible(model)
 ols_step_both_aic(model)
