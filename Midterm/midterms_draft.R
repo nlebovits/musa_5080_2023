@@ -8,6 +8,8 @@ library(tidycensus)
 library(sfdep)
 library(curl)
 library(zip)
+library(rsgeo)
+library(janitor)
 
 tmap_mode('view')
 options(tigris_use_cache = TRUE)
@@ -22,6 +24,14 @@ data_path_2022 <- ("Midterm/data/2022/studentData.geojson")
 data_2022 <- st_read(data_path_2023, quiet = TRUE)
 data_2023 <- st_read(data_path_2023, quiet = TRUE)
 data <- rbind(data_2022, data_2023)
+
+df1 <- data.frame(id = data_2022$musaID)
+df2 <- data.frame(id = data_2023$musaID)
+
+musa_ids <- rbind(df1, df2)
+
+unique(musa_ids$id)
+
 
 drop <- c("objectid", "assessment_date", "beginning_point", "book_and_page", "category_code", 
           "cross_reference", "date_exterior_condition", "house_number", "location", "owner_1", 
@@ -43,7 +53,22 @@ data <- data %>%
           st_transform(crs = crs) %>%
           filter(sale_price > 1) #need to filter for realistic sale prices, per https://www.phila.gov/media/20220525080608/tax-year-2023-mass-appraisal-valuation-methodology.pdf
 
-unique(data$quality_grade)
+colnames(data)
+
+ggplot(data) +
+  geom_bar(aes(y = building_code_description_new))
+
+price_x_type <- data %>%
+                  group_by(building_code_description_new) %>%
+                  summarize(avg_price = mean(sale_price),
+                            median_price = median(sale_price),
+                            count = n())
+
+ggplot(price_x_type, aes(x = avg_price, y = median_price)) +
+  geom_point()
+
+ggplot(price_x_type) +
+  geom_col(aes(y = reorder(building_code_description_new, median_price), x = median_price))
 
 ggplot(data, aes(x = sale_price)) +
   geom_histogram(bins = 1000)
@@ -55,24 +80,24 @@ data <- data[, keep_columns]
 
 ### test model 
 
-numeric_only <- data %>% st_drop_geometry() %>% select(where(is.numeric))
-model <- lm(sale_price ~ ., data = numeric_only)
-# ols_step_all_possible(model)
-ols_step_both_aic(model)
-
-keep_vars <- c(ols_step_both_aic(model)$predictors, "sale_price")
-final_data <- numeric_only[, keep_vars]
-
-set.seed(42)
-train_control <- trainControl(method = "cv",
-                              number = 10)
-
-model <- train(sale_price ~ ., data = numeric_only,
-               trControl = train_control,
-               method = "lm",
-               na.action = na.exclude)
-
-print(model)
+# numeric_only <- data %>% st_drop_geometry() %>% select(where(is.numeric))
+# model <- lm(sale_price ~ ., data = numeric_only)
+# # ols_step_all_possible(model)
+# ols_step_both_aic(model)
+# 
+# keep_vars <- c(ols_step_both_aic(model)$predictors, "sale_price")
+# final_data <- numeric_only[, keep_vars]
+# 
+# set.seed(42)
+# train_control <- trainControl(method = "cv",
+#                               number = 10)
+# 
+# model <- train(sale_price ~ ., data = numeric_only,
+#                trControl = train_control,
+#                method = "lm",
+#                na.action = na.exclude)
+# 
+# print(model)
 
 ### 
 
@@ -119,24 +144,24 @@ data <- st_join(data, phl_acs)
 
 ### test model 
 
-numeric_only <- data %>% st_drop_geometry() %>% select(where(is.numeric))
-model <- lm(sale_price ~ ., data = numeric_only)
-# ols_step_all_possible(model)
-ols_step_both_aic(model)
-
-keep_vars <- c(ols_step_both_aic(model)$predictors, "sale_price")
-final_data <- numeric_only[, keep_vars]
-
-set.seed(42)
-train_control <- trainControl(method = "cv",
-                              number = 10)
-
-model <- train(sale_price ~ ., data = numeric_only,
-               trControl = train_control,
-               method = "lm",
-               na.action = na.exclude)
-
-print(model)
+# numeric_only <- data %>% st_drop_geometry() %>% select(where(is.numeric))
+# model <- lm(sale_price ~ ., data = numeric_only)
+# # ols_step_all_possible(model)
+# ols_step_both_aic(model)
+# 
+# keep_vars <- c(ols_step_both_aic(model)$predictors, "sale_price")
+# final_data <- numeric_only[, keep_vars]
+# 
+# set.seed(42)
+# train_control <- trainControl(method = "cv",
+#                               number = 10)
+# 
+# model <- train(sale_price ~ ., data = numeric_only,
+#                trControl = train_control,
+#                method = "lm",
+#                na.action = na.exclude)
+# 
+# print(model)
 
 ### 
 
@@ -167,24 +192,24 @@ data <- data %>%
 
 ### test model 
 
-numeric_only <- data %>% st_drop_geometry() %>% select(where(is.numeric))
-model <- lm(sale_price ~ ., data = numeric_only)
-# ols_step_all_possible(model)
-ols_step_both_aic(model)
-
-keep_vars <- c(ols_step_both_aic(model)$predictors, "sale_price")
-final_data <- numeric_only[, keep_vars]
-
-set.seed(42)
-train_control <- trainControl(method = "cv",
-                              number = 10)
-
-model <- train(sale_price ~ ., data = numeric_only,
-               trControl = train_control,
-               method = "lm",
-               na.action = na.exclude)
-
-print(model)
+# numeric_only <- data %>% st_drop_geometry() %>% select(where(is.numeric))
+# model <- lm(sale_price ~ ., data = numeric_only)
+# # ols_step_all_possible(model)
+# ols_step_both_aic(model)
+# 
+# keep_vars <- c(ols_step_both_aic(model)$predictors, "sale_price")
+# final_data <- numeric_only[, keep_vars]
+# 
+# set.seed(42)
+# train_control <- trainControl(method = "cv",
+#                               number = 10)
+# 
+# model <- train(sale_price ~ ., data = numeric_only,
+#                trControl = train_control,
+#                method = "lm",
+#                na.action = na.exclude)
+# 
+# print(model)
 
 ### 
 
@@ -227,42 +252,36 @@ corridors <- st_read(corridors_path, quiet= TRUE) %>% st_transform(crs = crs)
 nearest_fts <- sf::st_nearest_feature(data, corridors)
 
 # convert to rsgeo geometries
-x <- rsgeo::as_rsgeo(origins)
-y <- rsgeo::as_rsgeo(dests)
+x <- rsgeo::as_rsgeo(data)
+y <- rsgeo::as_rsgeo(corridors)
 
 # calculate distance
 data$dist_to_commerce <- rsgeo::distance_euclidean_pairwise(x, y[nearest_fts])
 
-sample <- sample_n(data, 20)
-
-tm_shape(corridors) +
-  tm_polygons(col = 'darkgreen', border.alpha = 0, alpha = 0.5) +
-tm_shape(sample) +
-  tm_dots(col = 'dist_to_commerce') +
-tm_shape(point_sf) +
-  tm_dots()
+# sample <- sample_n(data, 20)
+# 
+# tm_shape(corridors) +
+#   tm_polygons(col = 'darkgreen', border.alpha = 0, alpha = 0.5) +
+# tm_shape(sample) +
+#   tm_dots(col = 'dist_to_commerce') +
+# tm_shape(point_sf) +
+#   tm_dots()
 
 
 downtown <- st_sfc(st_point(c(-75.16408, 39.95266)), crs = 4326)
-downtown_sf <- st_sf(geometry = point_geom)
+downtown_sf <- st_sf(geometry = downtown)
 downtown_sf <- downtown_sf %>% st_transform(crs= crs)
 
 nearest_fts <- sf::st_nearest_feature(data, downtown_sf)
 
 # convert to rsgeo geometries
-x <- rsgeo::as_rsgeo(origins)
+x <- rsgeo::as_rsgeo(data)
 y <- rsgeo::as_rsgeo(downtown_sf)
 
 # calculate distance
 data$dist_to_downtown <- rsgeo::distance_euclidean_pairwise(x, y[nearest_fts])
 
 ####
-
-dummied_data <- fastDummies::dummy_cols(st_drop_geometry(data))
-
-dummied_data <- dummied_data %>%
-                    mutate_if(is.factor, as.numeric) %>%
-                    select_if(~ !is.character(.))
 
   # crime raster layers
   # flooding?
@@ -275,33 +294,70 @@ dummied_data <- dummied_data %>%
 
 
 
-model <- lm(sale_price ~ ., data = dummied_data)
-keep_vars <- c(ols_step_both_aic(model)$predictors, "sale_price")
-final_data <- dummied_data[, keep_vars]
-
+# model <- lm(sale_price ~ ., data = dummied_data)
+# keep_vars <- c(ols_step_both_aic(model)$predictors, "sale_price")
+# final_data <- dummied_data[, keep_vars]
+set.seed(42)
 
 numeric_only <- data %>% st_drop_geometry() %>% select(where(is.numeric)) 
 model <- lm(sale_price ~ ., data = numeric_only)
-# ols_step_all_possible(model)
-ols_step_both_aic(model)
-ols_step_both_p(model)
+keep_vars <- c(ols_step_both_aic(model)$predictors, "sale_price", "mapname", "building_code_description_new", "quality_grade")
+
+final_data <- data %>% 
+                select(all_of(keep_vars)) %>% 
+                st_drop_geometry()
+
+dummied_data <- dummy_cols(final_data) %>%
+                    clean_names() %>%
+                    select(-c(mapname,
+                              building_code_description_new,
+                              quality_grade))
 
 
-  # proximity to parks
-  # proximity to commercial corridor
+model <- lm(sale_price ~ ., data = dummied_data)
 keep_vars <- c(ols_step_both_aic(model)$predictors, "sale_price")
-final_data <- dummied_data[, keep_vars]
 
-set.seed(42)
+final_data <- dummied_data %>% 
+  select(keep_vars) %>% 
+  st_drop_geometry()
+
+# keep_vars <- keep_vars %>% str_remove_all(" ")
+# 
+# print(keep_vars)
+
+customSummary <- function(data, lev = NULL, model = NULL) {
+  mpe <- mean((data$obs - data$pred) / data$obs) * 100
+  mae <- mean(abs(data$obs - data$pred))
+  rmse <- sqrt(mean((data$obs - data$pred)^2))
+  rsq <- cor(data$obs, data$pred)^2
+  out <- c(MAE = mae, RMSE = rmse, Rsquared = rsq, MPE = mpe)
+  out
+}
+
 train_control <- trainControl(method = "cv",
-                              number = 10)
+                              number = 100,
+                              summaryFunction = customSummary)
 
-model <- train(sale_price ~ ., data = numeric_only,
+
+model <- train(sale_price ~ ., 
+               data = final_data,
                trControl = train_control,
                method = "lm",
                na.action = na.exclude)
-?train
+
+# predict(model)
 
 print(model)
+ols_plot_resid_fit(model)
+# plotObsVsPred(model)
+# 
+# plot.train(model, plotType = "scatter")
+# 
+# results <- data.frame(sale_price = final_data$sale_price, pred_price = model$trainingData$.outcome)
+# 
+# ggplot(results, aes(x = sale_price, y = pred_price)) +
+#   geom_point() 
+# 
+# print(keep_vars)
 
 # dummy vars: https://stackoverflow.com/questions/48649443/how-to-one-hot-encode-several-categorical-variables-in-r
