@@ -33,9 +33,9 @@
   source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
   
   # set working directory
-  setwd("~/Documents/MUSA5080")
+  setwd("~/Documents/musa_5080_2023/Midterm/")
   
-  # define my color parlettes
+  # define my color palettes
   mypalette1 <- colorRampPalette(c("#fcb39f","#7a0728"))(5)
   
   # load API key
@@ -159,10 +159,11 @@
     dplyr::select(sale_price,total_livable_area, year_built, total_area) %>%
     filter(year_built > 0, total_livable_area > 0, total_area > 0,
            sale_price <= 4000000) %>% # for now look at places < $4mil
+    mutate(pct_livable = total_livable_area/total_area) %>% 
     gather(Variable, Value, -sale_price) %>% 
     ggplot(aes(Value, sale_price)) +
     geom_point(size = .5) + geom_smooth(method = "lm", se=F, colour = "#FA7800") +
-    facet_wrap(~Variable, ncol = 3, scales = "free") +
+    facet_wrap(~Variable, ncol = 2, scales = "free") +
     labs(title = "Price as a function of continuous variables") +
     plotTheme()
   
@@ -191,13 +192,14 @@
     labs(title = "Price as a function of\ncategorical variables", y = "Mean_Price") +
     plotTheme() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
   
-  # weak postive association with year built
+  # weak positive association with year built
   # stronger positive association with both areas, but lots of clustering close to 0 for total_area
   # might be better to stick with livable area
+  # when restricting to total_livable_area <= total_area, total_livable_area > 0, total_area > 1, 
+  #   pct_livable (total_livable_area/total_area) actually has a slight negative slope 
+  #   aka as the ratio of livable area to total area increases, sale_price decreases
+  #   maybe people value having extra space outside of livable spaces?
   
-  # mutate central_air to y/n
-  # garage_spaces 2 or more
-  # basements, what do the letters mean? change to y/n
   # num_bath 3 or more
   # num_bed
   # num_stories 1-2, 3, 4+ (3 levels?)
@@ -206,7 +208,13 @@
                   "garage_spaces","basements","num_bath","num_stories")
   
   data_formodel <- studentData %>% 
-    mutate()
+    mutate(central_air = ifelse(central_air %in% c(1,"Y"), "Y", "N"),       # mutate central_air to y/n
+           garage_spaces = ifelse(garage_spaces %in% 0:1,"0/1","2+"),       # mutate garage_spaces to 0-1 or 2 or more
+           basements = ifelse(basements == 0, "N", "Y"),                    # mutate basements to y/n; still need to clarify what the letters mean
+           num_bath = ifelse(number_of_bathrooms <= 2, "0-2",
+                             ifelse(number_of_bathrooms == 3, "3",
+                                    ifelse(number_of_bathrooms > 3, "4+", number_of_bathrooms)))) %>% 
+    dplyr::select(sale_price, total_livable_area, year_built, central_air, garage_spaces, basements, num_bath)
   
   
   # pick out some variables of interest
