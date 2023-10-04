@@ -10,6 +10,9 @@ library(curl)
 library(zip)
 library(rsgeo)
 library(janitor)
+library(spatstat)
+library(maptools)
+library(terra)
 
 tmap_mode('view')
 options(tigris_use_cache = TRUE)
@@ -19,18 +22,8 @@ crs <- "epsg:2272"
 phl <- st_read("https://opendata.arcgis.com/datasets/405ec3da942d4e20869d4e1449a2be48_0.geojson", quiet = TRUE) %>%
           st_transform(crs = crs)
 
-data_path_2023 <- ("Midterm/data/2023/studentData.geojson")
-data_path_2022 <- ("Midterm/data/2022/studentData.geojson")
-data_2022 <- st_read(data_path_2023, quiet = TRUE)
-data_2023 <- st_read(data_path_2023, quiet = TRUE)
-data <- rbind(data_2022, data_2023)
-
-df1 <- data.frame(id = data_2022$musaID)
-df2 <- data.frame(id = data_2023$musaID)
-
-musa_ids <- rbind(df1, df2)
-
-unique(musa_ids$id)
+data_path <- ("Midterm/data/2023/studentData.geojson")
+data <- st_read(data_path, quiet = TRUE)
 
 
 drop <- c("objectid", "assessment_date", "beginning_point", "book_and_page", "category_code", 
@@ -51,27 +44,28 @@ data <- data %>%
           mutate_at(to_cat, as.character) %>% 
           # mutate(house_extension = as.numeric(house_extension)) %>% # for some reason, this *really* fucks up the model
           st_transform(crs = crs) %>%
-          filter(sale_price > 1) #need to filter for realistic sale prices, per https://www.phila.gov/media/20220525080608/tax-year-2023-mass-appraisal-valuation-methodology.pdf
+          filter(sale_price > 1) %>% #need to filter for realistic sale prices, per https://www.phila.gov/media/20220525080608/tax-year-2023-mass-appraisal-valuation-methodology.pdf
+          mutate(number_of_rooms = ifelse(is.na(number_of_rooms), 1, number_of_rooms))
 
-colnames(data)
-
-ggplot(data) +
-  geom_bar(aes(y = building_code_description_new))
-
-price_x_type <- data %>%
-                  group_by(building_code_description_new) %>%
-                  summarize(avg_price = mean(sale_price),
-                            median_price = median(sale_price),
-                            count = n())
-
-ggplot(price_x_type, aes(x = avg_price, y = median_price)) +
-  geom_point()
-
-ggplot(price_x_type) +
-  geom_col(aes(y = reorder(building_code_description_new, median_price), x = median_price))
-
-ggplot(data, aes(x = sale_price)) +
-  geom_histogram(bins = 1000)
+# colnames(data)
+# 
+# ggplot(data) +
+#   geom_bar(aes(y = building_code_description_new))
+# 
+# price_x_type <- data %>%
+#                   group_by(building_code_description_new) %>%
+#                   summarize(avg_price = mean(sale_price),
+#                             median_price = median(sale_price),
+#                             count = n())
+# 
+# ggplot(price_x_type, aes(x = avg_price, y = median_price)) +
+#   geom_point()
+# 
+# ggplot(price_x_type) +
+#   geom_col(aes(y = reorder(building_code_description_new, median_price), x = median_price))
+# 
+# ggplot(data, aes(x = sale_price)) +
+#   geom_histogram(bins = 1000)
 
 data <- data[phl, ]
 keep_columns <- sapply(data, function(col) length(unique(col)) > 1) #drop columns with only one unique value (i.e., no variance)
@@ -107,37 +101,39 @@ hoods <- st_read('https://raw.githubusercontent.com/azavea/geo-data/master/Neigh
 
 data <- st_join(data, hoods)
 
-acs_vars <- c("B25026_001E",
-              "B02001_002E",
-              "B15001_050E",
-              "B15001_009E",
-              "B19013_001E", 
-              "B25058_001E",
-              "B06012_002E")
+# acs_vars <- c("B25026_001E",
+#               "B02001_002E",
+#               "B15001_050E",
+#               "B15001_009E",
+#               "B19013_001E", 
+#               "B25058_001E",
+#               "B06012_002E")
+# 
+# phl_acs <- get_acs(geography = "tract",
+#                    variables = acs_vars, 
+#                    year= 2020, 
+#                    state= "PA",
+#                    county= "Philadelphia", 
+#                    geometry=TRUE,
+#                    output = "wide") %>% 
+#   st_transform(crs = crs) %>%
+#   rename(totPop = B25026_001E, 
+#          white = B02001_002E,
+#          femaleBachelors = B15001_050E, 
+#          maleBachelors = B15001_009E,
+#          medHHInc = B19013_001E, 
+#          medRent = B25058_001E,
+#          totPov = B06012_002E) %>%
+#   mutate(pctWhite = ifelse(totPop > 0, white / totPop, 0),
+#          pctBach = ifelse(totPop > 0, ((femaleBachelors + maleBachelors) / totPop), 0),
+#          pctPov = ifelse(totPop > 0, totPov / totPop, 0)) %>%
+#   dplyr::select(-white, -femaleBachelors, -maleBachelors, -totPov, -ends_with("M")) %>%
+#   filter(!st_is_empty(geometry)) %>%
+#   select(totPop, medHHInc, medRent, pctWhite, pctBach, pctPov)
+# 
+# saveRDS(phl_acs, "Midterm/phl_acs.RData")
 
-phl_acs <- get_acs(geography = "tract",
-                   variables = acs_vars, 
-                   year= 2020, 
-                   state= "PA",
-                   county= "Philadelphia", 
-                   geometry=TRUE,
-                   output = "wide") %>% 
-  st_transform(crs = crs) %>%
-  rename(totPop = B25026_001E, 
-         white = B02001_002E,
-         femaleBachelors = B15001_050E, 
-         maleBachelors = B15001_009E,
-         medHHInc = B19013_001E, 
-         medRent = B25058_001E,
-         totPov = B06012_002E) %>%
-  mutate(pctWhite = ifelse(totPop > 0, white / totPop, 0),
-         pctBach = ifelse(totPop > 0, ((femaleBachelors + maleBachelors) / totPop), 0),
-         pctPov = ifelse(totPop > 0, totPov / totPop, 0)) %>%
-  dplyr::select(-white, -femaleBachelors, -maleBachelors, -totPov, -ends_with("M")) %>%
-  filter(!st_is_empty(geometry)) %>%
-  select(totPop, medHHInc, medRent, pctWhite, pctBach, pctPov)
-
-saveRDS(phl_acs, "Midterm/phl_acs.RData")
+phl_acs <- readRDS("Midterm/phl_acs.RData")
 
 data <- st_join(data, phl_acs)
 
@@ -281,7 +277,33 @@ y <- rsgeo::as_rsgeo(downtown_sf)
 # calculate distance
 data$dist_to_downtown <- rsgeo::distance_euclidean_pairwise(x, y[nearest_fts])
 
-####
+#### shootings
+
+
+shootings_url <- 'https://phl.carto.com/api/v2/sql?q=SELECT+*+FROM+shootings+WHERE+year+%3E+2018&filename=shootings&format=geojson&skipfields=cartodb_id'
+shootings <- st_read(shootings_url) %>% 
+                  st_transform(crs = crs) %>%
+                  filter(!st_is_empty(geometry))
+
+sp_points <- as(shootings, "Spatial")
+ppp_object <- as.ppp(sp_points)
+kde <- densityAdaptiveKernel(ppp_object)
+kde_spatraster <- rast(kde)
+
+guncrime <- terra::extract(kde_spatraster, data) %>%
+              transmute(ID = ID,
+                        guncrime_density = scale(lyr.1))
+data <- cbind(data, guncrime) 
+
+
+# sample <- sample_n(data, 100)
+# 
+# tm_shape(sample) +
+#   tm_dots(col = "guncrime_density")
+# 
+# colnames(data)
+
+
 
   # crime raster layers
   # flooding?
@@ -294,18 +316,14 @@ data$dist_to_downtown <- rsgeo::distance_euclidean_pairwise(x, y[nearest_fts])
 
 
 
-# model <- lm(sale_price ~ ., data = dummied_data)
-# keep_vars <- c(ols_step_both_aic(model)$predictors, "sale_price")
-# final_data <- dummied_data[, keep_vars]
+
 set.seed(42)
 
 numeric_only <- data %>% st_drop_geometry() %>% select(where(is.numeric)) 
 model <- lm(sale_price ~ ., data = numeric_only)
 keep_vars <- c(ols_step_both_aic(model)$predictors, "sale_price", "mapname", "building_code_description_new", "quality_grade")
 
-final_data <- data %>% 
-                select(all_of(keep_vars)) %>% 
-                st_drop_geometry()
+final_data <- data %>% select(all_of(keep_vars)) %>% st_drop_geometry()
 
 dummied_data <- dummy_cols(final_data) %>%
                     clean_names() %>%
@@ -313,17 +331,12 @@ dummied_data <- dummy_cols(final_data) %>%
                               building_code_description_new,
                               quality_grade))
 
-
 model <- lm(sale_price ~ ., data = dummied_data)
 keep_vars <- c(ols_step_both_aic(model)$predictors, "sale_price")
 
-final_data <- dummied_data %>% 
-  select(keep_vars) %>% 
-  st_drop_geometry()
+final_data <- dummied_data %>% select(keep_vars) %>% st_drop_geometry()
 
-# keep_vars <- keep_vars %>% str_remove_all(" ")
-# 
-# print(keep_vars)
+
 
 customSummary <- function(data, lev = NULL, model = NULL) {
   mpe <- mean((data$obs - data$pred) / data$obs) * 100
@@ -348,16 +361,71 @@ model <- train(sale_price ~ .,
 # predict(model)
 
 print(model)
-ols_plot_resid_fit(model)
-# plotObsVsPred(model)
-# 
-# plot.train(model, plotType = "scatter")
-# 
-# results <- data.frame(sale_price = final_data$sale_price, pred_price = model$trainingData$.outcome)
-# 
-# ggplot(results, aes(x = sale_price, y = pred_price)) +
-#   geom_point() 
-# 
-# print(keep_vars)
 
-# dummy vars: https://stackoverflow.com/questions/48649443/how-to-one-hot-encode-several-categorical-variables-in-r
+final_data %>%
+  group_by(number_of_rooms) %>%
+  summarize(n())
+
+reg = lm(sale_price ~ ., data = final_data)
+summary(reg)
+length(rstandard(reg))
+
+data_nb = data_nb |>
+  mutate(stand_resids = rstandard(reg),
+         spatial_lag = st_lag(stand_resids, 
+                              nb, 
+                              wt))
+
+### calculate global moran's i of sale price
+data_nb <- data %>% 
+          mutate(nb = st_knn(geometry, k = 5),
+                 wt = st_weights(nb),
+                 .before = 1)
+# library(spdep)
+# 
+# nb_lines = nb2lines(data_nb$nb, 
+#                           coords = st_centroid(data_nb$geometry), 
+#                           as_sf = TRUE)
+# 
+# tmap_mode('plot')
+# 
+# tm_shape(phl) + 
+#   tm_borders(col = "grey", lwd = 0.5) + 
+#   tm_shape(nb_lines) +
+#   tm_lines(col = "red") +
+#   tm_layout(frame = FALSE)
+
+# calculate global moran's i for sale_price
+global_moran(data_nb$sale_price, data_nb$nb, data_nb$wt)$`I`
+
+moranMC = global_moran_perm(data_nb$sale_price, data_nb$nb, data_nb$wt, alternative = "two.sided", 999)
+
+moranMC
+
+moranMCres = moranMC$res |>
+  as.data.frame()
+
+colnames(moranMCres) = "col1"
+
+ggplot(moranMCres) +
+  geom_histogram(aes(col1), bins = 100) +
+  geom_vline(xintercept = moranMC$statistic, col = "red") +
+  labs(title = "Histogram of MoranMCres",
+       x = "moranMCres",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+moran.plot(data_nb$sale_price, nb2listw(data_nb$nb),
+           xlab = "Sale Price", 
+           ylab = "Spatial Lag")
+
+lisa = local_moran(data_nb$sale_price, data_nb$nb, data_nb$wt, nsim = 999)
+data_nb <- cbind(data_nb, lisa)
+
+lisa_sample <- sample_n(data_nb, 100)
+
+tmap_mode('view')
+
+tm_shape(lisa_sample) +
+  tm_dots(col = "p_ii")
