@@ -45,11 +45,13 @@
   
   # load data
   # studentData = dataset we will be testing our models on
-  studentData <- st_read("https://raw.githubusercontent.com/mafichman/musa_5080_2023/main/Midterm/data/2023/studentData.geojson")
+  studentData <- st_read("https://raw.githubusercontent.com/mafichman/musa_5080_2023/main/Midterm/data/2023/studentData.geojson") %>% 
+    st_transform(st_crs(tracts21))
   # 99.6% of this data is for modeling, the rest is for the challenge
   
   # source of data to build model
-  phillyData <- st_read("https://opendata.arcgis.com/datasets/88e5bc291b834606bd49f6fd6dca226e_0.geojson")
+  phillyData <- st_read("https://opendata.arcgis.com/datasets/88e5bc291b834606bd49f6fd6dca226e_0.geojson") %>% 
+    st_transform(st_crs(tracts21))
   
   studentData_cols <- data.frame(names(studentData))
   phillyData_cols <- data.frame(names(phillyData))
@@ -81,7 +83,12 @@
            pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop),0),
            pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
            year = "2021") %>%
-    dplyr::select(-Whites, -FemaleBachelors, -MaleBachelors, -TotalPoverty) 
+    dplyr::select(TotalPop, MedHHInc, MedRent, pctWhite, pctBachelors, pctPoverty) 
+  
+  # neighborhood data
+  nhoods <- st_read('https://raw.githubusercontent.com/azavea/geo-data/master/Neighborhoods_Philadelphia/Neighborhoods_Philadelphia.geojson', quiet = T) %>%
+    st_transform(st_crs(tracts21)) %>%    # using the same crs as tracts21 (aka ESRI)
+    select(mapname)
 }
 
 # Exploring data ----
@@ -167,10 +174,27 @@
     labs(title = "Price as a function of continuous variables") +
     plotTheme()
   
-  # bar plot of 
+  # correlation plot
+  numeric_vars <- 
+    select_if(st_drop_geometry(studentData), is.numeric) %>% na.omit()
+  
+  ggcorrplot(
+    round(cor(numeric_vars), 1), 
+    p.mat = cor_pmat(numeric_vars),
+    colors = c("#25CB10", "white", "#FA7800"),
+    type="lower",
+    insig = "blank") +  
+    labs(title = "Correlation across numeric variables") 
+  
+  # positive correlation with total area, total livable area, frontage, num bath, num room, fireplaces, num bed
+  # negative correlation with int and ext con (they're also very colinear)
+  # total area colinear with frontage (and obvi livable area)
+  # zip code and num rooms is negatively correlated
+  
+  # bar plot of studentData
   st_drop_geometry(studentData) %>% 
     dplyr::select(sale_price, exterior_condition, fireplaces, frontage, garage_spaces,
-                  basements, garage_type, interior_condition,central_air,
+                  basements, garage_type, interior_condition,central_air,type_heater,
                   depth,number_of_bathrooms, number_of_bedrooms, number_of_rooms, number_stories) %>%
     mutate(number_stories = as.factor(number_stories)) %>%
     # dplyr::select(sale_price, exterior_condition, fireplaces,garage_spaces, 
@@ -201,29 +225,103 @@
   #   maybe people value having extra space outside of livable spaces?
   
   # num_bath 3 or more
-  # num_bed
+  # num_bed 1-3, 4+
   # num_stories 1-2, 3, 4+ (3 levels?)
+  # num_rooms 3-6, 7-12, 13+
+  # type_heater "D" has the highest price
+  # exterior condition 1, 2-4, 5+
+  # interior condition 0, 1-3, 4+
   
   col_tokeep <- c("sale_price","total_livable_area","year_built","central_air",
-                  "garage_spaces","basements","num_bath","num_stories")
+                  "garage_spaces","basements","num_bath","num_bed","num_stories")
   
   data_formodel <- studentData %>% 
-    mutate(central_air = ifelse(central_air %in% c(1,"Y"), "Y", "N"),       # mutate central_air to y/n
-           garage_spaces = ifelse(garage_spaces %in% 0:1,"0/1","2+"),       # mutate garage_spaces to 0-1 or 2 or more
-           basements = ifelse(basements == 0, "N", "Y"),                    # mutate basements to y/n; still need to clarify what the letters mean
-           num_bath = ifelse(number_of_bathrooms <= 2, "0-2",
-                             ifelse(number_of_bathrooms == 3, "3",
-                                    ifelse(number_of_bathrooms > 3, "4+", number_of_bathrooms)))) %>% 
-    dplyr::select(sale_price, total_livable_area, year_built, central_air, garage_spaces, basements, num_bath)
+    mutate(central_air_new = ifelse(central_air %in% c(1,"Y"), "Y", "N"),       # mutate central_air to y/n
+           garage_spaces_new = ifelse(garage_spaces %in% 0:1,"0/1","2+"),       # mutate garage_spaces to 0-1 or 2 or more
+           basements_new = ifelse(basements == 0, "N", "Y"),                    # mutate basements to y/n; still need to clarify what the letters mean
+           num_bath = ifelse(number_of_bathrooms <= 3, "0-3",
+                             ifelse(number_of_bathrooms > 3, "4+",number_of_bathrooms)),
+           num_bed = ifelse(number_of_bedrooms <=3 | number_of_bedrooms == 31, "1-3","4+"),
+           num_stories = ifelse(number_stories < 3, "1-2",
+                               ifelse(number_stories == 3, "3",
+                                      ifelse(number_stories > 3, "4+",number_stories))),
+           num_rooms = ifelse(number_of_rooms < 7, "3-6",
+                              ifelse(number_of_rooms %in% 7:12, "7-12",
+                                     ifelse(number_of_rooms > 13, "13+", number_of_rooms))),
+           type_heater_new = ifelse(type_heater == "D" | type_heater == 0 | type_heater == "",type_heater,
+                                    ifelse(type_heater == "A" | type_heater == "E", "A/E","B/C/G/H"))) %>% 
+    dplyr::select(sale_price, total_livable_area, year_built, central_air, central_air_new, garage_spaces, garage_spaces_new, 
+                  basements, basements_new, num_bath, num_bed, num_stories, number_of_rooms, type_heater, type_heater_new,
+                  exterior_condition, interior_condition, frontage, depth, fireplaces, number_of_bathrooms, number_of_bedrooms) %>% 
+    filter(sale_price > 0)
+  
+  # 0 obs
+  # data_fm_inOD <- data_formodel[phillyData,]
+  
+  data_formodel_nhood <- st_join(data_formodel, nhoods)
+  
+  data_formodel_nhood_phlacs <- st_join(data_formodel_nhood, tracts21)
+  
+  # set final data for modeling
+  phldata_formodel <- data_formodel_nhood_phlacs
+  
+}
+
+
+# modeling
+{
+  # OLS reg from book
+  reg1 <- lm(sale_price ~ ., data = st_drop_geometry(phldata_formodel) %>% 
+               dplyr::select(sale_price, total_livable_area, year_built, central_air_new, garage_spaces_new,
+                             basements_new, number_of_bathrooms, exterior_condition, type_heater_new))
+  summary(reg1)
   
   
-  # pick out some variables of interest
+  
+  
+  # testing models
+  set.seed(17)
+  
+  inTrain <- createDataPartition(
+    y = paste(phldata_formodel$garage_spaces_new, phldata_formodel$central_air_new, 
+              phldata_formodel$basements_new, phldata_formodel$type_heater_new), 
+    p = .60, list = FALSE)
+  phl.training <- phldata_formodel[inTrain,] 
+  phl.test <- phldata_formodel[-inTrain,]  
+  
+  reg1.training <- lm(sale_price ~ ., data = st_drop_geometry(phldata_formodel) %>% 
+                        dplyr::select(sale_price, total_livable_area, year_built, central_air_new, garage_spaces_new,
+                                      basements_new, number_of_bathrooms, exterior_condition, type_heater_new))
+  
+  phl.test <-
+    phl.test %>%
+    mutate(sale_price.Predict = predict(reg1.training, phl.test),
+           sale_price.Error = sale_price.Predict - sale_price,
+           sale_price.AbsError = abs(sale_price.Predict - sale_price),
+           sale_price.APE = (abs(sale_price.Predict - sale_price)) / sale_price.Predict) # %>%
+    # filter(SalePrice < 5000000)
+  
+  mean(phl.test$sale_price.AbsError, na.rm = T)
+  
+  mean(phl.test$sale_price.APE, na.rm = T)
   
   
   
+  # cross validation
+  fitControl <- trainControl(method = "cv", number = 100)
+  set.seed(17)
   
+  reg1.cv <- 
+    train(sale_price ~ ., data = st_drop_geometry(phldata_formodel) %>% 
+            dplyr::select(sale_price, total_livable_area, year_built, central_air_new, garage_spaces_new,
+                          basements_new, number_of_bathrooms, exterior_condition, type_heater_new), 
+          method = "lm", trControl = fitControl, na.action = na.pass)
   
-  
+  reg1.cv
   
   
 }
+
+
+
+
