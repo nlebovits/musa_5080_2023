@@ -38,13 +38,16 @@ library(janitor)
 library(spatstat)
 library(maptools)
 library(terra)
+library(ggthemr)
 
 tmap_mode('view')
 options(tigris_use_cache = TRUE)
+ggthemr('flat')
 
 crs <- "epsg:2272"
 
 set.seed(42)
+
 ```
 ## Methods
 
@@ -212,6 +215,14 @@ model <- train(sale_price ~ .,
 
 print(model)
 ```
+```{r mae hist}
+ggplot(data = model$resample) +
+  ggplot2::geom_histogram(aes(x = MAE)) +
+  labs(title = "Distribution of MAE",
+       subtitle = "K-Fold Cross Validation; k = 100",
+       x = "Mean Absolute Error",
+       y = "Count")
+```
 
 ## Results
 
@@ -249,6 +260,49 @@ ggplot(moranMCres) +
 moran.plot(data_nb$sale_price, nb2listw(data_nb$nb),
            xlab = "Sale Price", 
            ylab = "Spatial Lag")
+```
+
+```{r resids}
+reg <- lm(sale_price ~ ., 
+               data = final_data,
+          na.action = na.exclude)
+
+reg_data <- cbind(reg$model, 
+                  reg$residuals, 
+                  reg$fitted.values) %>%
+              mutate(resids = `reg$residuals`,
+                     pred_value = `reg$fitted.values`)
+
+ggplot(reg_data) +
+    ggplot2::geom_point(aes(x = sale_price, y = pred_value), alpha = 0.5) +
+    ggplot2::geom_abline() +
+    theme_minimal()
+
+# mean(reg_data$resids)
+# 
+# 
+# join_cols <- c("sale_price",
+#                "off_street_open",
+#                "medRent",
+#                "pctWhite")
+# final_data_cols <- names(dummied_data)
+# spat_data <- data %>% select(final_data_cols) %>% na.omit()
+#   
+# reg_data <- inner_join(reg_data, spat_data, by = c("sale_price" = "sale_price",
+#                                                    "off_street_open" = "off_street_open",
+#                                                    "med_rent" = "medRent",
+#                                                    "pct_white" = "pctWhite"))
+# 
+# reg_data <- inner_join()
+# reg_data$residuals <- reg$residuals
+# 
+# reg_data <- final_data %>%
+#               transmute(
+#                stand_resids = rstandard(reg),
+#                      spatial_lag = st_lag(stand_resids, 
+#                                              nb, 
+#                                              weights)
+#               )
 ```
 
 ```{r lisa map}
