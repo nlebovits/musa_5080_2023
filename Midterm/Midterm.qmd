@@ -30,6 +30,7 @@ library(caret) # add dummy vars
 library(tmap)
 library(fastDummies)
 library(tidycensus)
+library(spdep)
 library(sfdep)
 library(curl)
 library(zip)
@@ -41,7 +42,7 @@ library(terra)
 library(ggthemr)
 
 tmap_mode('view')
-options(tigris_use_cache = TRUE)
+options(tigris_use_cache = TRUE, scipen = 999)
 ggthemr('flat')
 
 crs <- "epsg:2272"
@@ -55,6 +56,8 @@ set.seed(42)
 
 ### Data Wrangling
 ```{r data wrangle}
+#| warning: false
+
 phl_path <- "https://opendata.arcgis.com/datasets/405ec3da942d4e20869d4e1449a2be48_0.geojson"
 phl <- st_read(phl_path, quiet = TRUE) %>%
           st_transform(crs = crs)
@@ -63,13 +66,12 @@ phl <- st_read(phl_path, quiet = TRUE) %>%
 data_path <- ("data/2023/studentData.geojson")
 data <- st_read(data_path, quiet = TRUE)
 
-
 drop <- c("objectid", "assessment_date", "beginning_point", "book_and_page", "category_code", 
           "cross_reference", "date_exterior_condition", "house_number", "location", "owner_1", 
           "owner_2", "parcel_number", "recording_date", "registry_number", "sale_date",
           "mailing_address_1", "mailing_address_2", "mailing_care_of", "mailing_zip", "mailing_street", 
           "mailing_city_state", "building_code", "geographic_ward", "state_code", "street_code", 
-          "street_name", "street_designation", "street_direction", "musaID", "census_tract", "suffix",
+          "street_name", "street_designation", "street_direction", "census_tract", "suffix",
           "zip_code", "building_code_new", "year_built_estimate", "pin", "toPredict", "unit", "exempt_land",
           "building_code_description"
           )
@@ -83,12 +85,60 @@ data <- data %>%
           # mutate(house_extension = as.numeric(house_extension)) %>% # for some reason, this *really* fucks up the model
           st_transform(crs = crs) %>%
           filter(sale_price > 1) %>% #need to filter for realistic sale prices, per https://www.phila.gov/media/20220525080608/tax-year-2023-mass-appraisal-valuation-methodology.pdf
-          mutate(number_of_rooms = ifelse(is.na(number_of_rooms), 1, number_of_rooms))
+          mutate(number_of_rooms = ifelse(is.na(number_of_rooms), number_of_bedrooms + number_of_bathrooms, number_of_rooms))
 
 
 data <- data[phl, ]
 keep_columns <- sapply(data, function(col) length(unique(col)) > 1) #drop columns with only one unique value (i.e., no variance)
 data <- data[, keep_columns]
+
+# as.integer(sqrt(length(unique(data$building_code_description_new))))
+# 
+# data %>%
+#   group_by(building_code_description_new) %>%
+#   summarize(avg_sale_price = mean(sale_price)) %>%
+#   ggplot() +
+#   geom_col(aes(x = reorder(building_code_description_new, avg_sale_price), y = avg_sale_price)) +
+#   theme(axis.text.x = element_text(hjust = 1, angle = 45))
+
+# over 800,000
+# over 600,000
+# 0er 400,000
+# over 200,000
+# under 200,000
+
+avg_sale_prices_x_building_type <- data %>%
+  group_by(building_code_description_new) %>%
+  summarize(avg_sale_price = mean(sale_price)) %>%
+  mutate(building_type_price_class = case_when(
+    avg_sale_price > 800000 ~ "most expensive",
+    avg_sale_price <= 800000 & avg_sale_price > 600000 ~ "more expensive",
+    avg_sale_price <= 600000 & avg_sale_price > 400000 ~ "expensive",
+    avg_sale_price <= 400000 & avg_sale_price > 200000 ~ "less expensive",
+    avg_sale_price <= 200000 ~ "least expensive",
+  )) %>%
+  select(building_code_description_new, building_type_price_class) %>%
+  st_drop_geometry()
+
+data <- left_join(data, avg_sale_prices_x_building_type, by = "building_code_description_new")
+
+
+# data %>%
+#   group_by(quality_grade) %>%
+#   summarize(avg_price = mean(sale_price)) %>%
+#   arrange(desc(avg_price)) %>%
+#   ggplot() +
+#   geom_col(aes(x = reorder(quality_grade, avg_price),
+#                y = avg_price))
+
+data <- data %>%
+          mutate(quality_grade = case_when(
+            quality_grade == "X" ~ "Highest",
+            quality_grade %in% c("X-", "A+", "A", "A-") ~ "High",
+            quality_grade %in% c("C", 'D', "D-", "D+", "6", "D-", "E", "C-", "E-", "E+") ~ "Lowest",
+            TRUE ~ "Mid"
+          ))
+
 
 ### neighborhoods-----------------------------------------------
 hoods_path <- 'https://raw.githubusercontent.com/azavea/geo-data/master/Neighborhoods_Philadelphia/Neighborhoods_Philadelphia.geojson'
@@ -98,8 +148,40 @@ hoods <- st_read(hoods_path, quiet = T) %>%
 
 data <- st_join(data, hoods)
 
+# 
+# as.integer(sqrt(length(unique(data$mapname))))
+# 
+# data %>%
+#   group_by(mapname) %>%
+#   summarize(avg_sale_price = mean(sale_price)) %>%
+#   arrange(desc(avg_sale_price)) %>%
+#   ggplot() +
+#   geom_histogram(aes(x = avg_sale_price), bins = 12) +
+#   scale_x_continuous(breaks = c(50000, 100000, 250000, 500000, 1000000))
+
+avg_sale_prices_x_hood <- data %>%
+  group_by(mapname) %>%
+  summarize(avg_sale_price = mean(sale_price)) %>%
+  mutate(hood_price_class = case_when(
+    avg_sale_price > 750000 ~ "most expensive",
+    avg_sale_price <= 750000 & avg_sale_price > 500000 ~ "more expensive",
+    avg_sale_price <= 500000 & avg_sale_price > 250000 ~ "expensive",
+    avg_sale_price <= 250000 & avg_sale_price > 100000 ~ "less expensive",
+    avg_sale_price <= 100000 ~ "least expensive",
+  )) %>%
+  select(mapname, hood_price_class) %>%
+  st_drop_geometry()
+
+data <- left_join(data, avg_sale_prices_x_hood, by = "mapname")
+
+
 ### ACS-----------------------------------------------
 phl_acs <- readRDS("phl_acs.RData")
+phl_acs <- phl_acs %>%
+              select(-c(
+                medRent,
+                pctPov
+              ))
 data <- st_join(data, phl_acs)
 
 ### tree canopy cover-----------------------------------------------
@@ -140,57 +222,113 @@ y <- rsgeo::as_rsgeo(corridors)
 data$dist_to_commerce <- rsgeo::distance_euclidean_pairwise(x, y[nearest_fts])
 
 ### proximity to downtown-----------------------------------------------
-downtown <- st_sfc(st_point(c(-75.16408, 39.95266)), crs = 4326)
-downtown_sf <- st_sf(geometry = downtown)
-downtown_sf <- downtown_sf %>% st_transform(crs= crs)
-
-nearest_fts <- sf::st_nearest_feature(data, downtown_sf)
-
-# convert to rsgeo geometries
-x <- rsgeo::as_rsgeo(data)
-y <- rsgeo::as_rsgeo(downtown_sf)
-
-# calculate distance
-data$dist_to_downtown <- rsgeo::distance_euclidean_pairwise(x, y[nearest_fts])
+# downtown <- st_sfc(st_point(c(-75.16408, 39.95266)), crs = 4326)
+# downtown_sf <- st_sf(geometry = downtown)
+# downtown_sf <- downtown_sf %>% st_transform(crs= crs)
+# 
+# nearest_fts <- sf::st_nearest_feature(data, downtown_sf)
+# 
+# # convert to rsgeo geometries
+# x <- rsgeo::as_rsgeo(data)
+# y <- rsgeo::as_rsgeo(downtown_sf)
+# 
+# # calculate distance
+# data$dist_to_downtown <- rsgeo::distance_euclidean_pairwise(x, y[nearest_fts])
 
 ### shootings density-----------------------------------------------
-shootings_url <- 'https://phl.carto.com/api/v2/sql?q=SELECT+*+FROM+shootings+WHERE+year+%3E+2022&filename=shootings&format=geojson&skipfields=cartodb_id'
-shootings <- st_read(shootings_url, quiet = TRUE) %>% 
-                  st_transform(crs = crs) %>%
-                  filter(!st_is_empty(geometry))
+# shootings_url <- 'https://phl.carto.com/api/v2/sql?q=SELECT+*+FROM+shootings+WHERE+year+%3E+2022&filename=shootings&format=geojson&skipfields=cartodb_id'
+# shootings <- st_read(shootings_url, quiet = TRUE) %>% 
+#                   st_transform(crs = crs) %>%
+#                   filter(!st_is_empty(geometry))
+# 
+# sp_points <- as(shootings, "Spatial")
+# ppp_object <- as.ppp(sp_points)
+# kde <- densityAdaptiveKernel(ppp_object)
+# kde_spatraster <- rast(kde)
+# 
+# guncrime <- terra::extract(kde_spatraster, data) %>%
+#               transmute(ID = ID,
+#                         guncrime_density = scale(lyr.1))
+# 
+# data <- cbind(data, guncrime) 
 
-sp_points <- as(shootings, "Spatial")
-ppp_object <- as.ppp(sp_points)
-kde <- densityAdaptiveKernel(ppp_object)
-kde_spatraster <- rast(kde)
 
-guncrime <- terra::extract(kde_spatraster, data) %>%
-              transmute(ID = ID,
-                        guncrime_density = scale(lyr.1))
-
-data <- cbind(data, guncrime) 
+  
 ```
 
 ### OLS Model
-```{r ols model}
-numeric_only <- data %>% st_drop_geometry() %>% select(where(is.numeric)) 
-model <- lm(sale_price ~ ., data = numeric_only)
-keep_vars <- c(ols_step_both_aic(model)$predictors, "sale_price", "mapname", "building_code_description_new", "quality_grade")
+```{r ols model} 
 
-final_data <- data %>% select(all_of(keep_vars)) %>% st_drop_geometry()
 
-dummied_data <- dummy_cols(final_data) %>%
+# data %>%
+#   group_by(mapname) %>%
+#   summarize(avg_sale_price = mean(sale_price)) %>%
+#   arrange(desc(avg_sale_price)) %>%
+#   head()
+
+# m <- cor(numeric_only %>% na.omit())
+# corrplot::corrplot(m, na.action = na.exclude)
+
+# numeric_only <- data %>% st_drop_geometry() %>% select(where(is.numeric))
+# ols_step_best_subset(model)
+# model <- lm(sale_price ~ ., data = numeric_only)
+# aic_preds <- ols_step_both_aic(model)$predictors
+keep_vars <- c("price_lag",
+               "garage_spaces",
+               "total_livable_area",
+               "medHHInc",
+               "number_of_rooms",
+               "number_of_bathrooms",        
+               "depth",
+               "off_street_open",
+               "fireplaces",
+               "interior_condition",
+               "number_stories",
+               "pctWhite",
+               "number_of_bedrooms",
+               "exterior_condition",
+               "dist_to_commerce",
+               "year_built",
+               "totPop",
+               "total_area",
+                "sale_price", 
+               "hood_price_class", 
+               "building_type_price_class", 
+               "quality_grade",
+               "musaID")
+
+
+dummied_data <- data %>%
+                  select(all_of(keep_vars)) %>% 
+                  dummy_cols(select_columns = c("hood_price_class",
+                                                "building_type_price_class",
+                                                "quality_grade")) %>%
                     clean_names() %>%
-                    select(-c(mapname,
-                              building_code_description_new,
-                              quality_grade))
+                    select(-c(hood_price_class,
+                              building_type_price_class,
+                              quality_grade)) %>%
+                    na.omit()
 
-model <- lm(sale_price ~ ., data = dummied_data)
-stepwise_selection <- ols_step_both_aic(model)
-print(stepwise_selection)
-keep_vars <- c(stepwise_selection$predictors, "sale_price")
+reg_data <- dummied_data %>%
+              st_drop_geometry() %>%
+              select(-c(geometry,
+                        musa_id))
 
-final_data <- dummied_data %>% select(keep_vars) %>% st_drop_geometry()
+
+# processed_dd <- preProcess(dummied_data %>% select(-sale_price),
+#                            method = c("center", "scale", "YeoJohnson", "nzv"))
+# 
+# processed_dd
+# predict(processed_dd, newdata = dummied_data %>% select(-sale_price))
+# 
+# processed_dd$method$remove
+
+# 
+# model <- lm(sale_price ~ ., data = dummied_data)
+# stepwise_selection <- ols_step_both_aic(model)
+# keep_vars <- c(stepwise_selection$predictors, "sale_price")
+# 
+# final_data <- dummied_data %>% select(keep_vars) %>% st_drop_geometry()
 
 
 customSummary <- function(data, lev = NULL, model = NULL) {
@@ -202,19 +340,25 @@ customSummary <- function(data, lev = NULL, model = NULL) {
   out
 }
 
-train_control <- trainControl(method = "cv",
-                              number = 100,
+train_control <- trainControl(method = "cv", # using leave one out instead of regular cv, so gives better esimate of error
+                              number = 10,
                               summaryFunction = customSummary)
 
 
 model <- train(sale_price ~ ., 
-               data = final_data,
+               data = reg_data,
                trControl = train_control,
                method = "lm",
                na.action = na.exclude)
 
 print(model)
+
+model_for_plot <- lm(sale_price ~ ., 
+               data = reg_data)
+ols_plot_resid_fit(model_for_plot)
+
 ```
+
 ```{r mae hist}
 ggplot(data = model$resample) +
   ggplot2::geom_histogram(aes(x = MAE)) +
@@ -257,42 +401,43 @@ ggplot(moranMCres) +
   theme_minimal() +
   theme(plot.title = element_text(hjust = 0.5))
 
-moran.plot(data_nb$sale_price, nb2listw(data_nb$nb),
+
+spdep::moran.plot(data_nb$sale_price, nb2listw(data_nb$nb),
            xlab = "Sale Price", 
            ylab = "Spatial Lag")
 ```
 
 ```{r resids}
 reg <- lm(sale_price ~ ., 
-               data = final_data,
+               data = reg_data,
           na.action = na.exclude)
 
-reg_data <- cbind(reg$model, 
+resids_data <- cbind(reg$model, 
                   reg$residuals, 
-                  reg$fitted.values) %>%
+                  reg$fitted.values,
+                  dummied_data$musa_id,
+                  dummied_data$geometry) %>%
               mutate(resids = `reg$residuals`,
-                     pred_value = `reg$fitted.values`)
+                     pred_value = `reg$fitted.values`) %>%
+            st_sf()
 
-ggplot(reg_data) +
-    ggplot2::geom_point(aes(x = sale_price, y = pred_value), alpha = 0.5) +
-    ggplot2::geom_abline() +
-    theme_minimal()
+resids_data <- st_join(resids_data, hoods)
 
-# mean(reg_data$resids)
-# 
-# 
-# join_cols <- c("sale_price",
-#                "off_street_open",
-#                "medRent",
-#                "pctWhite")
-# final_data_cols <- names(dummied_data)
-# spat_data <- data %>% select(final_data_cols) %>% na.omit()
-#   
-# reg_data <- inner_join(reg_data, spat_data, by = c("sale_price" = "sale_price",
-#                                                    "off_street_open" = "off_street_open",
-#                                                    "med_rent" = "medRent",
-#                                                    "pct_white" = "pctWhite"))
-# 
+error_x_hood <- resids_data %>%
+                  group_by(mapname) %>%
+                  summarize(avg_error = mean(abs(resids))) %>%
+                  arrange(desc(avg_error)) %>%
+                  select(avg_error, mapname) %>%
+                  st_drop_geometry() %>%
+                  left_join(., hoods, by = "mapname") %>%
+                  st_sf()
+
+tmap_mode('plot')
+
+tm_shape(error_x_hood) +
+  tm_polygons(col = 'avg_error', border.col = NA, style = 'jenks')
+
+
 # reg_data <- inner_join()
 # reg_data$residuals <- reg$residuals
 # 
