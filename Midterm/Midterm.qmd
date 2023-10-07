@@ -27,9 +27,9 @@ Housing market price estimators like Zillow's Zestimate can give a general idea 
 
 There are many reasons why these price estimators may be inaccurate (e.g. data availability, inability to capture temporal housing market patterns, etc.), and among them lack of local intelligence stands out. Each urban area has its own culture and unique characteristics that need to be factored into AVMs in order to more accurately predict housing prices. As residents and spatial analysts of the city of Philadelphia, our team was able to apply our knowledge of the city and its neighborhoods to the creation of an improved prediction model. 
 
-Even with a deeper understanding of Philadelphia, creating an improved AVM for the city is still a challenging task. All kinds of data are available including health and human services, transportation, public safety, parks and recreation, and food in addition to the traditional housing market and attribute data used in AVMs. Though all of these data are interrelated and inform each other and home price, limiting the amount of predictors to only keep those that are most informative can be a daunting task. We often create new features by redefining (sometimes by combining) variables that improve our prediction of home price. Luckily we implement technology that makes this decision-making process easier. 
+Even with a deeper understanding of Philadelphia, creating an improved home price estimator model for the city is still a challenging task. All kinds of data are available including health and human services, transportation, public safety, parks and recreation, and food in addition to the traditional housing market and attribute data used in AVMs. Though all of these data are interrelated and inform each other and home price, limiting the amount of predictors to only keep those that are most informative can be a daunting task. We often create new features by redefining (sometimes by combining) variables that improve our prediction of home price. Luckily we implement technology that makes this decision-making process easier. 
 
-Another possible challenge when it comes to constructing an AVM is data availability, or rather unavailability. Some neighborhoods, especially low-income neighborhoods and regions where the population does not trust in government, data that we use in our AVMs may be missing for various reasons. Some of the variables that are most informative to a model may be resources that are unavailable in low-income neighborhoods. On the other hand, even if the resources are available and utilized in the community, a region with high distrust in government may not report information in the government Census and other data surveys, resulting in missing data. Ultimately, if a model relies on variables that are missing in neighborhoods with certain characteristics, it will predict home price with more error in these regions.
+Another possible challenge when it comes to constructing a hone price estimator model is data availability, or rather unavailability. Some neighborhoods, especially low-income neighborhoods and regions where the population does not trust in government, data that we use in our AVMs may be missing for various reasons. Some of the variables that are most informative to a model may be resources that are unavailable in low-income neighborhoods. On the other hand, even if the resources are available and utilized in the community, a region with high distrust in government may not report information in the government Census and other data surveys, resulting in missing data. Ultimately, if a model relies on variables that are missing in neighborhoods with certain characteristics, it will predict home price with more error in these regions.
 
 Keeping these potential pitfalls in mind, our overall modeling strategy was as follows. We first gathered open-source data about Philadelphia to examine and create variables about Philadelphia houses and neighborhoods that can be predictors in our model. We then input a selection of predictors into an ordinary least squares (OLS) regression, specifically an OLS step-wise regression, to narrow down and determine the combination of the most informative predictors. After assessing our model fit by looking at mean absolute error (MAE) and mean absolute percentage error (MAPE), we revised our selection of predictors and repeated the process until we were happy with our model.
 
@@ -69,11 +69,19 @@ source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-L
 
 ### Data Sources
 
-TO DO: DESCRIBE HOW DATA WAS GATHERED
-
-We pulled data from OpenData arcGIS, house attribute data provided by Zillow (studentData), Philadelphia neighborhood data (credit azavea github user), and ACS Census data.
+We gathered data about the shape and outline of the city of Philadelphia and its neighborhoods from OpenData arcGIS and Azavea's Github repository (cite Azavea, geo-data, (2012), GitHub repository, https://raw.githubusercontent.com/azavea/geo-data/master/Neighborhoods_Philadelphia/), respectively. We also pulled information about commercial centrs from OpenData arcGIS. Housing market and attribute data (including house features, sale price, ownership, etc.) was provided by Zillow (aka studentData), and additional census tract data (including total population, median income, etc.) was gathered from 5-year ACS Census data for {year}. We would like to note here that we previously had gathered data from  {source1} and {source2} about tree canopy cover and shootings, respectively, but our exploratory data anlalysis found that these data did not help us improve our model.
 
 ### Data Wrangling
+
+#### Exploratory Analysis 
+
+We first limited studentData to rows with realistic values for sale price (sale_price > 1). After combining all data described above (matching by geographical location), we explored the relationship between variables and sale price. Scatterplots (like those of Figure xx) that plot sale price as a function of interesting predictors. 
+
+#### Collinearity
+
+When using numerous predictors in a model, it is important to inspect for colinearity, or how similar or correlated predictors are to each other. We explored these relationships between features by examining a correlation matrix. As shown in Figure xx, some variables such as {var1} and {var2} have strong colinearity. Taking note of these patterns, we still kept our subset of predictors as our next step accounts for colinearity.
+
+
 ```{r data wrangle}
 #| warning: false
 
@@ -315,7 +323,7 @@ ppsqft <- data %>% dplyr::select(sale_price,total_area) %>%
 mypalette1 <- colorRampPalette(c("#fcb39f","#7a0728"))(5)
 
 ggplot() +
-  geom_sf(data = phl_acs, color = "white") +
+  geom_sf(data = hoods, color = "white") + 
   geom_sf(data = ppsqft, aes(colour = q5(ppsqft_m)), 
           show.legend = "point", size = .75) +
   scale_colour_manual(values = mypalette1,
