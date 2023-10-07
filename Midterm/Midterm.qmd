@@ -62,10 +62,16 @@ crs <- "epsg:2272"
 
 set.seed(42)
 
+# load functions from functions.R
+source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
 ```
 ## Methods
 
 ### Data Sources
+
+TO DO: DESCRIBE HOW DATA WAS GATHERED
+
+We pulled data from OpenData arcGIS, house attribute data provided by Zillow (studentData), Philadelphia neighborhood data (credit azavea github user), and ACS Census data.
 
 ### Data Wrangling
 ```{r data wrangle}
@@ -269,7 +275,38 @@ data$dist_to_commerce <- rsgeo::distance_euclidean_pairwise(x, y[nearest_fts])
   
 ```
 
-```{r sale_price_map}
+TO DO: Present a table of summary statistics with variable descriptions. Sort these variables by their category (internal characteristics, amenities/public services or spatial structure). Check out the `stargazer` package for this.
+
+
+TO DO: Present a correlation matrix
+
+
+TO DO: Present 4 home price correlation scatterplots that you think are of interest. I’m going to look for interesting open data that you’ve integrated with the home sale observations.
+
+```{r 4 interesting scatters}
+# below is just a template of the code
+# st_drop_geometry(studentData) %>% 
+#     dplyr::select(sale_price,total_livable_area, year_built, total_area) %>%
+#     filter(year_built > 0, total_livable_area > 0, total_area > 0,
+#            sale_price <= 4000000) %>% # for now look at places < $4mil
+#     mutate(pct_livable = total_livable_area/total_area) %>% 
+#     gather(Variable, Value, -sale_price) %>% 
+#     ggplot(aes(Value, sale_price)) +
+#     geom_point(size = .5) + geom_smooth(method = "lm", se=F, colour = "#FA7800") +
+#     facet_wrap(~Variable, ncol = 2, scales = "free") +
+#     labs(title = "Price as a function of continuous variables") +
+#     plotTheme()
+```
+
+
+TO DO: Develop 3 maps of 3 of your most interesting independent variables.
+
+
+
+#### Map of Home Sale Prices in Philadelphia
+
+```{r ppsqft map}
+# create price per squre foot variable
 ppsqft <- data %>% dplyr::select(sale_price,total_area) %>% 
       drop_na() %>% 
       mutate(ppsqft_m = ifelse(sale_price != 0 & total_area != 0 & total_area != 1,sale_price/total_area, NA)) %>%  # there are some places where total_area == 1
@@ -289,6 +326,7 @@ ggplot() +
        caption = "Figure xx") +
   mapTheme()
 ```
+
 
 
 ### OLS Model
@@ -386,13 +424,25 @@ model <- train(sale_price ~ .,
                method = "lm",
                na.action = na.exclude)
 
-print(model)
+# print(model)
 
 model_for_plot <- lm(sale_price ~ ., 
                data = reg_data)
 ols_plot_resid_fit(model_for_plot)
-
+# can we do this in ggplot? mostly for aesthetic purposes but also to add Figure xx caption
 ```
+
+## Results
+
+### Regression Results
+
+TO DO: Provide a polished table of your training set lm summary results (coefficients, R2 etc).
+
+
+TO DO: Provide a polished table of mean absolute error and MAPE for a single test set.
+
+
+TO DO: Provide the results of your cross-validation tests. This includes mean and standard deviation MAE. (already have the histogram of MAE w 100 folds) 
 
 ```{r mae hist}
 ggplot(data = model$resample) +
@@ -400,12 +450,28 @@ ggplot(data = model$resample) +
   labs(title = "Distribution of MAE",
        subtitle = "K-Fold Cross Validation; k = 100",
        x = "Mean Absolute Error",
-       y = "Count")
+       y = "Count",
+       caption = "Figure xx")
 ```
 
-## Results
 
-### Regression Results
+TO DO: Plot predicted prices as a function of observed prices
+
+
+TO DO: Provide a map of your residuals for your test set. Include a Moran’s I test and a plot of the spatial lag in errors.
+
+
+TO DO: Provide a map of your predicted values for where ‘toPredict’ is both “MODELLING” and “CHALLENGE”
+
+
+TO DO: Using the test set predictions, provide a map of mean absolute percentage error (MAPE) by neighborhood. (code chunk reids is close to what we want, but use MAPE instead of resids)
+
+
+TO DO: Provide a scatterplot plot of MAPE by neighborhood as a function of mean price by neighborhood.
+
+
+TO DO: Using tidycensus, split your study area into two groups (perhaps by race or income) and test your model’s generalizability. Is your model generalizable?
+
 
 ### Spatial Autocorrelation and Error
 ```{r autocorr}
@@ -432,7 +498,8 @@ ggplot(moranMCres) +
   geom_vline(xintercept = moranMC$statistic, col = "red") +
   labs(title = "Histogram of MoranMCres",
        x = "moranMCres",
-       y = "Frequency") +
+       y = "Frequency",
+       caption = "Figure xx") +
   theme_minimal() +
   theme(plot.title = element_text(hjust = 0.5))
 
