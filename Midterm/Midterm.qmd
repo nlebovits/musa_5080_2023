@@ -53,6 +53,7 @@ library(spatstat)
 library(maptools)
 library(terra)
 library(ggthemr)
+library(ggcorrplot)
 
 tmap_mode('view')
 options(tigris_use_cache = TRUE, scipen = 999)
@@ -99,7 +100,7 @@ drop <- c("objectid", "assessment_date", "beginning_point", "book_and_page", "ca
           "mailing_address_1", "mailing_address_2", "mailing_care_of", "mailing_zip", "mailing_street", 
           "mailing_city_state", "building_code", "geographic_ward", "state_code", "street_code", 
           "street_name", "street_designation", "street_direction", "census_tract", "suffix",
-          "zip_code", "building_code_new", "year_built_estimate", "pin", "toPredict", "unit", "exempt_land",
+          "zip_code", "building_code_new", "year_built_estimate", "pin", "unit", "exempt_land",
           "building_code_description"
           )
 
@@ -111,7 +112,6 @@ data <- data %>%
           mutate_at(to_cat, as.character) %>% 
           # mutate(house_extension = as.numeric(house_extension)) %>% # for some reason, this *really* fucks up the model
           st_transform(crs = crs) %>%
-          filter(sale_price > 1) %>% #need to filter for realistic sale prices, per https://www.phila.gov/media/20220525080608/tax-year-2023-mass-appraisal-valuation-methodology.pdf
           mutate(number_of_rooms = ifelse(is.na(number_of_rooms), number_of_bedrooms + number_of_bathrooms, number_of_rooms))
 
 
@@ -288,22 +288,45 @@ TO DO: Present a table of summary statistics with variable descriptions. Sort th
 
 TO DO: Present a correlation matrix
 
+```{r corr matrix of num vars}
+numeric_vars <- reg_data %>% 
+  dplyr::select(depth,) %>% 
+  na.omit()
+  
+ggcorrplot(
+  round(cor(numeric_vars), 1), 
+  p.mat = cor_pmat(numeric_vars),
+  colors = c("#07317a", "white", "#7a0728"),
+  type="lower",
+  insig = "blank") +  
+  labs(title = "Correlation across numeric variables",
+       caption = "Figure xx") 
+
+# need to reorder variables so they are clustered to show collinearity
+
+```
+
+
 
 TO DO: Present 4 home price correlation scatterplots that you think are of interest. I’m going to look for interesting open data that you’ve integrated with the home sale observations.
 
 ```{r 4 interesting scatters}
 # below is just a template of the code
-# st_drop_geometry(studentData) %>% 
-#     dplyr::select(sale_price,total_livable_area, year_built, total_area) %>%
-#     filter(year_built > 0, total_livable_area > 0, total_area > 0,
-#            sale_price <= 4000000) %>% # for now look at places < $4mil
-#     mutate(pct_livable = total_livable_area/total_area) %>% 
-#     gather(Variable, Value, -sale_price) %>% 
-#     ggplot(aes(Value, sale_price)) +
-#     geom_point(size = .5) + geom_smooth(method = "lm", se=F, colour = "#FA7800") +
-#     facet_wrap(~Variable, ncol = 2, scales = "free") +
-#     labs(title = "Price as a function of continuous variables") +
-#     plotTheme()
+st_drop_geometry(data) %>%
+  dplyr::select(sale_price,total_livable_area, year_built, total_area) %>%
+  filter(year_built > 0, total_livable_area > 0, total_area > 0) %>%
+  mutate(pct_livable = total_livable_area/total_area) %>%
+  rename(`Total Area` = total_area,
+         `Total Livable Area` = total_livable_area,
+         `Year Built` = year_built,
+         `Percent of livable space` = pct_livable) %>% 
+  gather(Variable, Value, -sale_price) %>%
+  ggplot(aes(Value, sale_price)) +
+  ggplot2::geom_point(size = .5) + ggplot2::geom_smooth(method = "lm", se=F, colour = "#FA7800") +
+  facet_wrap(~Variable, ncol = 2, scales = "free") +
+  labs(title = "Price as a function of continuous variables",
+       y = "Home Sale Price") +
+  plotTheme()
 ```
 
 
@@ -381,7 +404,7 @@ keep_vars <- c("price_lag",
                "year_built",
                "totPop",
                "total_area",
-                "sale_price", 
+               "sale_price", 
                "hood_price_class", 
                "building_type_price_class", 
                "quality_grade",
