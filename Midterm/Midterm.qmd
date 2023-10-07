@@ -77,9 +77,9 @@ We gathered data about the shape and outline of the city of Philadelphia and its
 
 We first limited studentData to rows with realistic values for sale price (sale_price > 1). After combining all data described above (matching by geographical location), we explored the relationship between variables and sale price. Scatterplots (like those of Figure xx) that plot sale price as a function of interesting predictors. 
 
-#### Collinearity
+#### Checking for Collinearity
 
-When using numerous predictors in a model, it is important to inspect for colinearity, or how similar or correlated predictors are to each other. We explored these relationships between features by examining a correlation matrix. As shown in Figure xx, some variables such as {var1} and {var2} have strong colinearity. Taking note of these patterns, we still kept our subset of predictors as our next step accounts for colinearity.
+When using numerous predictors in a model, it is important to inspect for collinearity, or how similar or correlated predictors are to each other. We explored these relationships between features by examining a correlation matrix. As shown in Figure xx, some variables such as {var1} and {var2} have strong collinearity. Taking note of these patterns, we still kept our subset of predictors as our next step accounts for collinearity.
 
 
 ```{r data wrangle}
@@ -338,6 +338,15 @@ ggplot() +
 
 
 ### OLS Model
+
+We used an ordinary least squares (OLS) regression model as our predictive model. The components of an OLS model are the dependent variable, independent variable(s), a coefficient for each independent variable, an intercept, and an error value. In our case, home sale price for a the i^th^ house is the dependent variable ($Y_i$), or what we're trying to predict and all of our predictors that we put into the model are independent variables ($X_{1_i},X_{2_i},...X_{n_i}$; where there are n predictors). The model calculates coefficients ($\beta_1,\beta_2,...,\beta_n$) for each independent variable and the intercept ($\beta_0$), where the coefficient is defined as the amount of change in sale price we expect for every unit of change in the independent variable that coefficient is paired with. The intercept is the expected sale price given we have no knowledge of any of the predictors. The error value ($\epsilon_i$) represents the difference between the actual home sale price and that predicted by the model, and it varies for every prediction.
+
+$$
+Y_i = \beta_0 + \beta_1 X_{1_i} + \beta_2 X_{2_i} + ... + \beta_n X_{n_i} + \epsilon_i
+$$
+
+There are assumptions that 
+
 ```{r ols model} 
 
 
