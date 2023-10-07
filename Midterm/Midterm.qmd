@@ -22,6 +22,38 @@ execute:
 ## Summary
 
 ## Introduction
+
+Housing market price estimators like Zillow's Zestimate can give a general idea of a house's value, but more often than not, professional appraisers and real estate agents do no recommend relying on these tools as they tend to have high error rates. In addition to inconveniencing a home buyer or seller, the high error rates of automated valuation models (AVM; e.g. Zillow's Zestimate) may misrepresent low-income and majority-minority, especially Black-majority neighborhoods and reify racial and class disparities in housing. (cite https://www.urban.org/urban-wire/why-automated-home-valuation-technology-errors-disproportionately-affect-majority-black-neighborhoods)
+
+There are many reasons why these price estimators may be inaccurate (e.g. data availability, inability to capture temporal patterns, etc.), and among them lack of local intelligence stands out. Each urban area has its own culture and unique characteristics that need to be factored into AVMs in order to more accurately predict housing prices.
+
+As residents and spatial analysts of the city of Philadelphia, our team is able to apply our knowledge of the city and its neighborhoods to the creation of an improved prediction model. 
+
+Why should we care about it? 
+
+because inaccurate housing valuation
+
+What makes this a difficult exercise? 
+
+difficult because there is so much data, figuring out what's the right data to use is hard. some predictors are highly collinear, or very related to each other that putting them in the same prediction model can hurt the results. 
+though some predictors may be vrey informative, the data might not be available for certain neighborhoods, especially in
+
+What is your overall modeling strategy? 
+
+Our overall modeling strategy was as follows. 
+
+gather lots of open-source data for Philadelphia
+look at how variables relate to sale price
+engineer features 
+
+We first gathered Philadelphia open-source data including _ and _. After taking a look at how variables from these databases related to sale price of houses, we  assessing the predictive power of each variable, we included the most powerful predictors in an ordinary least squares (OLS) regression, specifically an OLS stepwise regression to determine the combination of predictors that resulted in the least amount of error.
+After gathering data from various reliable sources, we assessed the predictive power of each predictor using various methods including plotting scatters of variables and 
+Using OLS step-wise regression, we 
+
+Briefly summarize your results. 
+
+Our newly improved model uses xx independent variables to predict housing prices in Philadelphia and is able to do so with a mean absolute error (MAE) of xx and mean absolute percentage error of xx. The most informative predictors in our OLS regression are var1, var2, and var3. 
+
 ```{r setup}
 library(tidyverse)
 library(olsrr)
@@ -464,8 +496,11 @@ tm_shape(lisa_sample) +
 
 ## Discussion
 
+Is this an effective model? What were some of the more interesting variables?  How much of the variation in prices could you predict? Describe the more important features? Describe the error in your predictions?  According to your maps, could you account the spatial variation in prices?  Where did the model predict particularly well? Poorly? Why do you think this might be?
+
 ### Accuracy and Generalizability
 
 ## Conclusion
 
+Would you recommend your model to Zillow? Why or why not? How might you improve this model?
 
