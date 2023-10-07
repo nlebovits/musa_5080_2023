@@ -269,6 +269,28 @@ data$dist_to_commerce <- rsgeo::distance_euclidean_pairwise(x, y[nearest_fts])
   
 ```
 
+```{r sale_price_map}
+ppsqft <- data %>% dplyr::select(sale_price,total_area) %>% 
+      drop_na() %>% 
+      mutate(ppsqft_m = ifelse(sale_price != 0 & total_area != 0 & total_area != 1,sale_price/total_area, NA)) %>%  # there are some places where total_area == 1
+      filter(!is.na(ppsqft_m)) # dropping missing ppsqft_m values for a cleaner map
+
+mypalette1 <- colorRampPalette(c("#fcb39f","#7a0728"))(5)
+
+ggplot() +
+  geom_sf(data = phl_acs, color = "white") +
+  geom_sf(data = ppsqft, aes(colour = q5(ppsqft_m)), 
+          show.legend = "point", size = .75) +
+  scale_colour_manual(values = mypalette1,
+                      labels=qBr(ppsqft,"ppsqft_m"),
+                      name=bquote((USD/ft^2))) +
+  labs(title = "Home Sale Price in Philadelphia",
+       subtitle="Price Per Square Foot", # make sure to note that NAs were dropped for visualization purpose
+       caption = "Figure xx") +
+  mapTheme()
+```
+
+
 ### OLS Model
 ```{r ols model} 
 
