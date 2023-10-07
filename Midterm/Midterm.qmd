@@ -23,36 +23,17 @@ execute:
 
 ## Introduction
 
-Housing market price estimators like Zillow's Zestimate can give a general idea of a house's value, but more often than not, professional appraisers and real estate agents do no recommend relying on these tools as they tend to have high error rates. In addition to inconveniencing a home buyer or seller, the high error rates of automated valuation models (AVM; e.g. Zillow's Zestimate) may misrepresent low-income and majority-minority, especially Black-majority neighborhoods and reify racial and class disparities in housing. (cite https://www.urban.org/urban-wire/why-automated-home-valuation-technology-errors-disproportionately-affect-majority-black-neighborhoods)
+Housing market price estimators like Zillow's Zestimate can give a general idea of a house's value, but more often than not, professional appraisers and real estate agents do no recommend relying on these tools as they tend to have high error rates. In addition to inconveniencing a home buyer or seller, the high error rates of automated valuation models (AVM; e.g. Zillow's Zestimate) may misrepresent low-income and majority-minority, especially Black-majority neighborhoods where home price value errors are higher compared to majority-white neighborhoods (cite https://www.urban.org/sites/default/files/publication/103429/how-automated-valuation-models-can-disproportionately-affect-majority-black-neighborhoods_1.pdf). As well, a home's value is often used to determine a homeowner's mortgage loan approval and to inform policymakers on the general state of the housing market (cite https://www.iaao.org/media/standards/Standard_on_Automated_Valuation_Models.pdf). Inaccurate housing estimates may lead to misinformed housing and economic policies disproportionately affecting non-white neighborhoods, reifying racial and class disparities in housing.
 
-There are many reasons why these price estimators may be inaccurate (e.g. data availability, inability to capture temporal patterns, etc.), and among them lack of local intelligence stands out. Each urban area has its own culture and unique characteristics that need to be factored into AVMs in order to more accurately predict housing prices.
+There are many reasons why these price estimators may be inaccurate (e.g. data availability, inability to capture temporal housing market patterns, etc.), and among them lack of local intelligence stands out. Each urban area has its own culture and unique characteristics that need to be factored into AVMs in order to more accurately predict housing prices. As residents and spatial analysts of the city of Philadelphia, our team was able to apply our knowledge of the city and its neighborhoods to the creation of an improved prediction model. 
 
-As residents and spatial analysts of the city of Philadelphia, our team is able to apply our knowledge of the city and its neighborhoods to the creation of an improved prediction model. 
+Even with a deeper understanding of Philadelphia, creating an improved AVM for the city is still a challenging task. All kinds of data are available including health and human services, transportation, public safety, parks and recreation, and food in addition to the traditional housing market and attribute data used in AVMs. Though all of these data are interrelated and inform each other and home price, limiting the amount of predictors to only keep those that are most informative can be a daunting task. We often create new features by redefining (sometimes by combining) variables that improve our prediction of home price. Luckily we implement technology that makes this decision-making process easier. 
 
-Why should we care about it? 
+Another possible challenge when it comes to constructing an AVM is data availability, or rather unavailability. Some neighborhoods, especially low-income neighborhoods and regions where the population does not trust in government, data that we use in our AVMs may be missing for various reasons. Some of the variables that are most informative to a model may be resources that are unavailable in low-income neighborhoods. On the other hand, even if the resources are available and utilized in the community, a region with high distrust in government may not report information in the government Census and other data surveys, resulting in missing data. Ultimately, if a model relies on variables that are missing in neighborhoods with certain characteristics, it will predict home price with more error in these regions.
 
-because inaccurate housing valuation
+Keeping these potential pitfalls in mind, our overall modeling strategy was as follows. We first gathered open-source data about Philadelphia to examine and create variables about Philadelphia houses and neighborhoods that can be predictors in our model. We then input a selection of predictors into an ordinary least squares (OLS) regression, specifically an OLS step-wise regression, to narrow down and determine the combination of the most informative predictors. After assessing our model fit by looking at mean absolute error (MAE) and mean absolute percentage error (MAPE), we revised our selection of predictors and repeated the process until we were happy with our model.
 
-What makes this a difficult exercise? 
-
-difficult because there is so much data, figuring out what's the right data to use is hard. some predictors are highly collinear, or very related to each other that putting them in the same prediction model can hurt the results. 
-though some predictors may be vrey informative, the data might not be available for certain neighborhoods, especially in
-
-What is your overall modeling strategy? 
-
-Our overall modeling strategy was as follows. 
-
-gather lots of open-source data for Philadelphia
-look at how variables relate to sale price
-engineer features 
-
-We first gathered Philadelphia open-source data including _ and _. After taking a look at how variables from these databases related to sale price of houses, we  assessing the predictive power of each variable, we included the most powerful predictors in an ordinary least squares (OLS) regression, specifically an OLS stepwise regression to determine the combination of predictors that resulted in the least amount of error.
-After gathering data from various reliable sources, we assessed the predictive power of each predictor using various methods including plotting scatters of variables and 
-Using OLS step-wise regression, we 
-
-Briefly summarize your results. 
-
-Our newly improved model uses xx independent variables to predict housing prices in Philadelphia and is able to do so with a mean absolute error (MAE) of xx and mean absolute percentage error of xx. The most informative predictors in our OLS regression are var1, var2, and var3. 
+Our newly improved model uses xx independent variables to predict housing prices in Philadelphia and is able to do so with a MAE of xx and MAPE of xx. The most informative predictors in our OLS regression are var1, var2, and var3. We observed clustering in home price predictions with a Moran's *I* of 0.615 (p < 0.001) meaning __. 
 
 ```{r setup}
 library(tidyverse)
