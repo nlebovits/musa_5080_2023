@@ -19,6 +19,7 @@ execute:
   cache: false
 ---
 
+
 ## Summary
 
 ## Introduction
@@ -34,6 +35,7 @@ Another possible challenge when it comes to constructing a hone price estimator 
 Keeping these potential pitfalls in mind, our overall modeling strategy was as follows. We first gathered open-source data about Philadelphia to examine and create variables about Philadelphia houses and neighborhoods that can be predictors in our model. We then input a selection of predictors into an ordinary least squares (OLS) regression, specifically an OLS step-wise regression, to narrow down and determine the combination of the most informative predictors. After assessing our model fit by looking at mean absolute error (MAE) and mean absolute percentage error (MAPE), we revised our selection of predictors and repeated the process until we were happy with our model.
 
 Our newly improved model uses xx independent variables to predict housing prices in Philadelphia and is able to do so with a MAE of xx and MAPE of xx. The most informative predictors in our OLS regression are var1, var2, and var3. We observed clustering in home price predictions with a Moran's *I* of 0.615 (p < 0.001) meaning __. 
+
 
 ```{r setup}
 library(tidyverse)
@@ -70,6 +72,7 @@ set.seed(42)
 # load functions from functions.R
 source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
 ```
+
 ## Methods
 
 ### Data Sources
@@ -85,6 +88,7 @@ We first limited studentData to rows with realistic values for sale price (sale_
 #### Checking for Collinearity
 
 When using numerous predictors in a model, it is important to inspect for collinearity, or how similar or correlated predictors are to each other. We explored these relationships between features by examining a correlation matrix. As shown in Figure xx, some variables such as {var1} and {var2} have strong collinearity. Taking note of these patterns, we still kept our subset of predictors as our next step accounts for collinearity.
+
 
 
 ```{r data wrangle}
@@ -388,7 +392,6 @@ reg_data_geom <- data_to_dummy %>%
 
 ```
 
-
 ```{r summary stats}
 # reorder data_mod
 sum_stat_data <- data_to_dummy %>% 
@@ -484,7 +487,6 @@ sum_stat_data %>%
 
 ```
 
-
 ```{r corr matrix of num vars}
 numeric_vars <- sum_stat_data %>% 
   dplyr::select(-c(building_type_price_class,quality_grade,hood_price_class)) %>% 
@@ -502,8 +504,6 @@ ggcorrplot(
        caption = "Figure 1") 
 
 ```
-
-
 
 ```{r 4 interesting scatters}
 # below is just a template of the code
@@ -523,8 +523,6 @@ st_drop_geometry(reg_data) %>%
        caption = "Figure 2") +
   plotTheme()
 ```
-
-
 
 ```{r dist_to_commerce map}
 # define color palettes
@@ -587,7 +585,9 @@ ggplot() +
 ```
 
 
+
 #### Map of Home Sale Prices in Philadelphia
+
 
 ```{r ppsqft map}
 # create price per square foot variable
@@ -612,6 +612,7 @@ ggplot() +
 
 
 
+
 ### OLS Model
 
 We used an ordinary least squares (OLS) regression model as our predictive model. The components of an OLS model are the dependent variable, independent variable(s), a coefficient for each independent variable, an intercept, and an error value. In our case, home sale price for a the i^th^ house is the dependent variable ($Y_i$), or what we're trying to predict and all of our predictors that we put into the model are independent variables ($X_{1_i},X_{2_i},...X_{n_i}$; where there are n predictors). The model calculates coefficients ($\beta_1,\beta_2,...,\beta_n$) for each independent variable and the intercept ($\beta_0$), where the coefficient is defined as the amount of change in sale price we expect for every unit of change in the independent variable that coefficient is paired with. The intercept is the expected sale price given we have no knowledge of any of the predictors. The error value ($\epsilon_i$) represents the difference between the actual home sale price and that predicted by the model, and it varies for every prediction.
@@ -621,6 +622,7 @@ Y_i = \beta_0 + \beta_1 X_{1_i} + \beta_2 X_{2_i} + ... + \beta_n X_{n_i} + \eps
 $$
 
 There are assumptions that 
+
 
 ```{r ols model} 
 # processed_dd <- preProcess(dummied_data %>% select(-sale_price),
@@ -669,9 +671,11 @@ summ_coeff1 <- as.data.frame(summary(reg.training)$coefficients) # same as summ_
 
 ```
 
+
 ## Results
 
 ### Regression Results
+
 
 ```{r polished lm summary}
 footnote1 <- paste0("R-squared: ",round(summ_reg.training$r.squared,3),
@@ -701,7 +705,6 @@ summ_coeff1 %>%
 
 ```
 
-
 ```{r table MAE/MAPE}
 data.frame(MAE = sprintf('%.2f',round(mae1,3)),
            MAPE = round(mape1,3)) %>% 
@@ -711,7 +714,6 @@ data.frame(MAE = sprintf('%.2f',round(mae1,3)),
   column_spec(1, width = "10em") %>% 
   column_spec(2, width = "10em")
 ```
-
 
 ```{r CV}
 customSummary <- function(data, lev = NULL, model = NULL) {
@@ -760,8 +762,6 @@ data.frame(MeanMAE = print_model$MAE,
 
 ```
 
-
-
 ```{r mae hist}
 ggplot(data = model$resample) +
   ggplot2::geom_histogram(aes(x = MAE), fill = "#027a59") +
@@ -772,7 +772,6 @@ ggplot(data = model$resample) +
        caption = "Figure 7") +
   plotTheme()
 ```
-
 
 ```{r predicted ~ observed}
 phl.test %>%
@@ -789,7 +788,6 @@ phl.test %>%
        x = "Observed Sale Price", y = "Predicted Sale Price") +
   plotTheme()
 ```
-
 
 ```{r resid map}
 resids_data <- cbind(reg.training$model,
@@ -815,7 +813,6 @@ ggplot() +
   mapTheme()
 
 ```
-
 
 ```{r morans i}
 # adapted from code chunk: autocorr
@@ -859,7 +856,9 @@ spdep::moran.plot(data_nb$sale_price, nb2listw(data_nb$nb),
 ```
 
 
+
 TO DO: Provide a map of your predicted values for where ‘toPredict’ is both “MODELLING” and “CHALLENGE”
+
 ```{r toPredict model + chal}
 inTrain2 <- createDataPartition(
               y = paste(imp_data$fireplaces, imp_data$number_of_rooms,
@@ -903,7 +902,9 @@ ggplot() +
 ```
 
 
+
 TO DO: Using the test set predictions, provide a map of mean absolute percentage error (MAPE) by neighborhood. (code chunk reids is close to what we want, but use MAPE instead of resids)
+
 ```{r MAPE by neighborhood}
 # code adapted from resids code chunk + book
 # by "test set" do they mean the new test set with both modelling and challenge data?
@@ -971,8 +972,10 @@ mape_x_hood %>%
 ```
 
 
+
 TO DO: Provide a scatterplot plot of MAPE by neighborhood as a function of mean price by neighborhood.
 aki: are they talking about predicted price or actual price? actual price plotted for now
+
 ```{r scatter MAPE price}
 st_drop_geometry(mape_x_hood) %>%
   ggplot(aes(mean.price, mean.MAPE)) +
@@ -988,7 +991,9 @@ st_drop_geometry(mape_x_hood) %>%
 ```
 
 
+
 TO DO: Using tidycensus, split your study area into two groups (perhaps by race or income) and test your model’s generalizability. Is your model generalizable?
+
 ```{r income generalizability}
 city_mean_inc <- round(mean(phl_acs$medHHInc,na.rm=T),2)
 
@@ -1033,9 +1038,6 @@ st_join(mape_data, split_data) %>%
     kable_classic(full_width = F, html_font = "Cambria") %>% 
   column_spec(1, width = "12em") %>% column_spec(2, width = "12em")
 ```
-
-
-
 
 ```{r autocorr}
 # data_nb <- data %>% 
@@ -1127,6 +1129,7 @@ tm_shape(lisa_sample) +
   tm_dots(col = "p_ii")
 ```
 
+
 ## Discussion
 
 Is this an effective model? What were some of the more interesting variables?  How much of the variation in prices could you predict? Describe the more important features? Describe the error in your predictions?  According to your maps, could you account the spatial variation in prices?  Where did the model predict particularly well? Poorly? Why do you think this might be?
@@ -1136,4 +1139,5 @@ Is this an effective model? What were some of the more interesting variables?  H
 ## Conclusion
 
 Would you recommend your model to Zillow? Why or why not? How might you improve this model?
+
 
