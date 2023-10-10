@@ -370,12 +370,14 @@ dummied_data_toimpute <- dummied_data %>%
          exterior_condition = as.factor(exterior_condition),
          number_stories = as.factor(number_stories))
 
-imp_data <- missForest(dummied_data_toimpute,ntree = 20)$ximp %>% 
-              cbind(dummied_data %>% dplyr::select(to_predict))
+# imp_data <- missForest(dummied_data_toimpute,ntree = 20)$ximp %>% 
+#               cbind(dummied_data %>% dplyr::select(to_predict))
 
 # saving imp_data so I don't have to run it again
 # write_csv(imp_data, "imputed_data.csv")
 # write_csv(imp_data, "imputed_data_wfactors.csv")
+
+imp_data <- read_csv("imputed_data_wfactors.csv")
 
 reg_data <- imp_data %>%
               filter(to_predict == "MODELLING") %>% # only keep modelling data
