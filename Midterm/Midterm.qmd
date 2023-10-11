@@ -125,8 +125,6 @@ data <- data %>%
           mutate_at(to_cat, as.character) %>% 
           st_transform(crs = crs) %>%
           mutate(
-            untreated_sale_price = sale_price,
-            sale_price = log(sale_price + 0.001),
             nb = st_knn(geometry, 5),
             wt = st_weights(nb),
             nb15 = st_knn(geometry, 15),
@@ -353,9 +351,9 @@ reg_data_geom <- data_to_dummy %>%
 ```
 
 ```{r}
-ggplot(data) +
-  geom_histogram(aes(x = untreated_sale_price)) +
-  scale_x_log10()
+# ggplot(data) +
+#   geom_histogram(aes(x = sale_price)) +
+#   scale_x_log10()
 ```
 
 #### Exploratory Analysis
@@ -367,7 +365,7 @@ We first limited studentData to rows with realistic values for sale price (sale_
 data %>%
   st_drop_geometry() %>%
   rename(med_hh_inc = medHHInc) %>%
-  dplyr::select(untreated_sale_price,
+  dplyr::select(sale_price,
                 dist_to_commerce,
                 price_lag,
                 total_livable_area,
@@ -378,9 +376,9 @@ data %>%
          `Spatial Lag of Home Sale Price` = price_lag) %>%
   gather(Variable, 
          Value, 
-         -untreated_sale_price) %>%
+         -sale_price) %>%
   ggplot(aes(Value, 
-             untreated_sale_price)) +
+             sale_price)) +
   ggplot2::geom_point(size = .5, alpha = 0.2) + 
   geom_smooth(method = "lm", se=F) +
   scale_color_manual(values = plt_pal) +
@@ -404,32 +402,37 @@ We have provided summary and descriptive statistics of the final predictors we d
 #| evaluate: false
 
 # # reorder numeric data
-# sum_stat_data <- reg_data
-# 
-# # summary statistics for numeric variables
-# sum_stat_table <- reg_data %>% 
-#   st_drop_geometry() %>%
-#   select(where(is.numeric)) %>%
-#   psych::describe() %>% dplyr::select(mean:median,min,max) %>% 
-#   mutate(Mean = as.character(round(mean)), 
-#          SD = as.character(round(sd)), 
-#          Median = as.character(round(median)), 
-#          Min = as.character(min), 
-#          Max = as.character(round(max))) %>% 
-#   dplyr::select(-(mean:max)) %>% 
-#   filter(Max > 1) %>% 
-#   as.data.frame()
-# 
-# # keep pctWhite rounded to nearest third
-# sum_stat_pctwhite <- sum_stat_data %>% 
-#   dplyr::select(pct_white) %>% 
-#   psych::describe() %>% dplyr::select(mean:median,min,max) %>% 
-#   mutate(Mean = as.character(round(mean,3)), 
-#          SD = as.character(round(sd,3)), 
-#          Median = as.character(round(median,3)), 
-#          Min = as.character(min), 
+sum_stat_data <- reg_data %>% st_drop_geometry() %>% 
+  dplyr::select(!matches("hood_price|building_type|quality|geometry|musa_id|sale_price")) %>% 
+  dplyr::select(year_built,exterior_condition,number_stories,interior_condition,fireplaces,depth,number_of_bathrooms,
+                number_of_rooms,total_livable_area,garage_spaces,
+                off_street_open,dist_to_commerce,# amenities
+                price_lag,tot_pop,pct_white,med_hh_inc) # spatial_process
+
+
+# summary statistics for numeric variables
+sum_stat_table <- sum_stat_data %>%
+  select(where(is.numeric)) %>%
+  psych::describe() %>% dplyr::select(mean:median,min,max) %>%
+  mutate(Mean = as.character(round(mean)),
+         SD = as.character(round(sd)),
+         Median = as.character(round(median)),
+         Min = as.character(min),
+         Max = as.character(round(max))) %>%
+  dplyr::select(-(mean:max)) %>%
+  # filter(Max > 1) %>%
+  as.data.frame()
+
+# keep pctWhite rounded to nearest third
+# sum_stat_pctwhite <- sum_stat_data %>%
+#   dplyr::select(pct_white) %>%
+#   psych::describe() %>% dplyr::select(mean:median,min,max) %>%
+#   mutate(Mean = as.character(round(mean,3)),
+#          SD = as.character(round(sd,3)),
+#          Median = as.character(round(median,3)),
+#          Min = as.character(min),
 #          Max = as.character(round(max,3))) %>%
-#   dplyr::select(-(mean:max)) %>% 
+#   dplyr::select(-(mean:max)) %>%
 #   as.data.frame()
 # 
 # sum_stat_table <- bind_rows(sum_stat_table[1:16,],
@@ -437,25 +440,26 @@ We have provided summary and descriptive statistics of the final predictors we d
 #                             sum_stat_table[17,])
 # 
 # 
-# sum_stat_table$Description <- 
-#   c("Total area in square feet",
-#     "Total liveable area in square feet",
-#     "", "", "", "",
-#     "Number of garage spaces",
-#     "Number of fireplaces",
-#     "Depth, as measured from the principal street back to the rear property line or secondary street",
-#     "Overall condition of the interior",
-#     "Overall condition of the exterior",
-#     "", "",
-#     "Distance to nearest commercial center",
-#     "Spatial lag of sale price, 15 nearest neighbors",
-#     "Median household income, census tract level data",
-#     "Percent of population that is white, census tract level data",
-#     "Total population, census tract level data")
+sum_stat_table$Description <-
+  c("",
+    "Overall condition of the exterior",
+    "",
+    "Overall condition of the interior",
+    "Number of fireplaces",
+    "Depth, as measured from the principal street back to the rear property line or secondary street",
+    "", "", 
+    "Total liveable area in square feet",
+    "Number of garage spaces",
+    "", 
+    "Distance to nearest commercial center",
+    "Spatial lag of sale price, 15 nearest neighbors",
+    "Total population, census tract level data",
+    "Percent of population that is white, census tract level data",
+    "Median household income, census tract level data")
 # 
-# sum_stat_table %>% 
-#   kbl(caption = "Table 1: Summary Statistics of numeric variables", align = rep("c", 8)) %>%
-#   kable_classic(full_width = F, html_font = "Cambria")
+sum_stat_table %>%
+  kbl(caption = "Table 1: Summary Statistics of numeric variables", align = rep("c", 8)) %>%
+  kable_classic(full_width = F, html_font = "Cambria")
 # 
 # # descriptive statistics for categorical data
 # # data$building_code_description_new <- 
@@ -558,7 +562,7 @@ buildtype_data <- data_to_dummy %>%
 
 price_x_hood <- data %>%
   group_by(mapname) %>%
-  summarize(avg_sale_price = mean(untreated_sale_price)) %>%
+  summarize(avg_sale_price = mean(sale_price)) %>%
   st_drop_geometry()
 
 price_x_hood <- left_join(hoods, price_x_hood) %>%
@@ -622,9 +626,9 @@ data %>%
   st_drop_geometry() %>%
   mutate(building_code_description_new = fct_reorder(building_code_description_new, sale_price, .fun='mean')) %>%
   ggplot()+
-  geom_boxplot(aes(x = untreated_sale_price, y = building_code_description_new), lwd = 0.3, fill = NA, outlier.alpha = 0.1) +
+  geom_boxplot(aes(x = sale_price, y = building_code_description_new), lwd = 0.3, fill = NA, outlier.alpha = 0.1) +
   labs(title = "Avg. Sale Price by Type of Home",
-       subtitle = "Figure X",
+       subtitle = "Figure 5",
        x = "Sale Price ($)") +
   theme(axis.title.y = element_blank())
 ```
@@ -636,9 +640,9 @@ data %>%
   st_drop_geometry() %>%
   mutate(interior_condition = fct_reorder(as.factor(interior_condition), sale_price, .fun='mean')) %>%
   ggplot()+
-  geom_boxplot(aes(x = untreated_sale_price, y = interior_condition), lwd = 0.3, fill = NA, outlier.alpha = 0.1) +
+  geom_boxplot(aes(x = sale_price, y = interior_condition), lwd = 0.3, fill = NA, outlier.alpha = 0.1) +
   labs(title = "Avg. Sale Price by Interior Condition Score",
-       subtitle = "Figure X",
+       subtitle = "Figure 6",
        x = "Sale Price ($)",
        y = "Interior Condition")
 
@@ -661,7 +665,7 @@ tm_layout(frame = FALSE,
           legend.outside = TRUE
           ) +
   tm_credits("Philadelphia, PA", fontface = "italic", align = "right") +
-  tm_credits("Figure 4", fontface = "bold", align = "right")
+  tm_credits("Figure 7", fontface = "bold", align = "right")
 ```
 
 Similarly, we find that total liveable area is higher in some neighborhoods than others, likely due to the housing typology, available space, and so forth. We account for this variable in our dataset as a continuous variable, but, again, it highlights the inadequacies of a non-spatial regression model.
@@ -692,7 +696,7 @@ tm_layout(frame = FALSE,
           legend.outside = TRUE
           ) +
   tm_credits("Philadelphia, PA", fontface = "italic", align = "right") +
-  tm_credits("Figure 3", fontface = "bold", align = "right")
+  tm_credits("Figure 8", fontface = "bold", align = "right")
 ```
 
 ### OLS Model
@@ -749,18 +753,19 @@ summ_coeff1 <- as.data.frame(summary(reg.training)$coefficients) # same as summ_
 Lastly, we note that our dependent variable, sale price, is not normally distribued, which is a major obstacle for OLS regression.
 ```{r untreated sale price dist}
 ggplot(data) +
-  geom_histogram(aes(x = untreated_sale_price) )+
-  labs(title = "Untransformed Sale Price",
-       x = "Untransformed Price",
-       y = "Count")
+  geom_histogram(aes(x = sale_price) )+
+  labs(title = "Sale Price",
+       x = "Price",
+       y = "Count",
+       caption = "Figure 9")
 ```
 To address this, we log-transform sale price, which normalizes the distibution and substantially improves the performance of our model.
 ```{r sale price dist}
-ggplot(reg_data) +
-  geom_histogram(aes(x = sale_price)) +
-  labs(title = "Log-Transformed Sale Price",
-       x = "Log-Transformed Price",
-       y = "Count")
+# ggplot(reg_data) +
+#   geom_histogram(aes(x = sale_price)) +
+#   labs(title = "Sale Price",
+#        x = "Price",
+#        y = "Count")
 ```
 
 ## Results
@@ -791,7 +796,7 @@ summ_coeff1 %>%
            `Pr(>|t|)` < 0.01 ~ paste0(`Sale Price`,"***")
          )) %>% 
   dplyr::select(`Sale Price`,SE) %>% 
-  kbl(caption = "Table 5: Summary of Training set LM", align = rep("c", 8)) %>%
+  kbl(caption = "Table 2: Summary of Training set LM", align = rep("c", 8)) %>%
   footnote(c(footnote1,footnote2)) %>% 
   kable_classic(full_width = F, html_font = "Cambria")
 
@@ -801,7 +806,7 @@ We note, furthermore, that many of our variables do not have statistically signi
 ```{r table MAE/MAPE}
 data.frame(MAE = sprintf('%.2f',round(mae1,3)),
            MAPE = round(mape1,3)) %>% 
-  kbl(caption = "Table 6: Mean Absolute Error (MAE) and Mean Absolute Percentage Error (MAPE) of one test set",
+  kbl(caption = "Table 3: Mean Absolute Error (MAE) and Mean Absolute Percentage Error (MAPE) of one test set",
       align = c("c","c")) %>% 
   kable_classic(full_width = F, html_font = "Cambria") %>% 
   column_spec(1, width = "10em") %>% 
@@ -837,7 +842,7 @@ model_resample <- model$resample
 
 data.frame(MeanMAE = print_model$MAE,
            SDMAE = round(sd(model_resample$MAE),3)) %>% 
-  kbl(caption = "Table 7: Results of 100-fold Cross-Validation",
+  kbl(caption = "Table 4: Results of 100-fold Cross-Validation",
       align = c("c","c"), 
       col.names = c("Mean MAE", "SD of MAE")) %>% 
   kable_classic(full_width = F, html_font = "Cambria") %>% 
@@ -856,7 +861,7 @@ ggplot(data = model$resample) +
        subtitle = "K-Fold Cross Validation; k = 100",
        x = "Mean Absolute Error",
        y = "Count",
-       caption = "Figure 7")
+       caption = "Figure 10")
 
 model_resample <- model_resample %>%
                       mutate(MAE_trans = exp(MAE))
@@ -873,7 +878,7 @@ phl.test %>%
   geom_smooth(method = "lm", se = FALSE, color = pal_full[3], lwd = .5, lty = "dashed") +
   labs(title="Predicted sale price as a function of observed price",
        subtitle="Solid line indicates a hypothetical perfect prediction, \ndashed line indicates slope of actual predictions",
-       caption = "Figure 8",
+       caption = "Figure 11",
        x = "Observed Sale Price", y = "Predicted Sale Price") +
   theme_minimal()
 ```
@@ -908,7 +913,7 @@ tm_layout(frame = FALSE,
           legend.outside = TRUE
           ) +
   tm_credits("Philadelphia, PA", fontface = "italic", align = "right") +
-  tm_credits("Figure 4", fontface = "bold", align = "right") +
+  tm_credits("Figure 12", fontface = "bold", align = "right") +
   tm_credits("Pct. Residuals are log-transformed", fontface = "italic", align = "right")
 ```
 
@@ -938,12 +943,16 @@ tm_layout(frame = FALSE,
           legend.outside = TRUE
           ) +
   tm_credits("Philadelphia, PA", fontface = "italic", align = "right") +
-  tm_credits("Figure 3", fontface = "bold", align = "right")
+  tm_credits("Figure 13", fontface = "bold", align = "right")
 ```
 
 ```{r resids}
 ggplot(spatial_resids, aes(x = sale_price, y = pct_residuals)) +
-  ggplot2::geom_point()
+  ggplot2::geom_point() +
+  labs(title = "Percent Residuals as a funciton of Sale Price",
+       x = "Sale Price",
+       y = "Residuals as %",
+       caption = "Figure 14")
 ```
 
 ```{r morans i}
@@ -972,7 +981,7 @@ ggplot(moranMCres) +
        subtitle = "Red line indicates the observed Moran's I",
        x = "Moran's I",
        y = "Count",
-       caption = "Figure 10")
+       caption = "Figure 15")
 
 ```
 
@@ -984,7 +993,7 @@ ggplot(moranMCres) +
 spdep::moran.plot(data_nb$sale_price, nb2listw(data_nb$nb),
            xlab = "Sale Price", 
            ylab = "Spatial Lag")
-# add caption that says Figure 11
+# add caption that says Figure 16, any way to edit title?
 ```
 
 TO DO: Provide a map of your predicted values for where 'toPredict' is both "MODELLING" and "CHALLENGE"
@@ -1027,7 +1036,7 @@ ggplot() +
                       name="Predicted Sale Price") +
   labs(title = "Map of Predicted Sale Price for Test Set",
        subtitle="Test Set includes both modelling and challenge data; Philadelphia, PA", 
-       caption = "Figure 12") +
+       caption = "Figure 17") +
   mapTheme()
 ```
 
@@ -1073,7 +1082,7 @@ tm_layout(frame = FALSE,
           legend.outside = TRUE
           ) +
   tm_credits("Philadelphia, PA", fontface = "italic", align = "right") +
-  tm_credits("Figure 13 ", fontface = "bold", align = "right")
+  tm_credits("Figure 18 ", fontface = "bold", align = "right")
 
 
 # mape_x_hood <- mape_data %>%
@@ -1162,7 +1171,7 @@ st_drop_geometry(mape_x_hood) %>%
   labs(title = "Mean MAPE by neighborhood as a function of mean price by neighborhood",
        y = "Mean MAPE by neighborhood", 
        x = "Mean price by neighborhood",
-       caption = "Figure 14")
+       caption = "Figure 19")
 
 # possibly add neighborhood names of extreme outliers
 ```
@@ -1176,7 +1185,7 @@ st_join(mape_data, split_data) %>%
   summarize(mean.MAPE = scales::percent(mean(sale_price.APE, na.rm = T))) %>%
   st_drop_geometry() %>%
   # spread(incomeContext, mean.MAPE) %>%
-  kbl(caption = "Table 8: Test set MAPE by neighborhood income context", align = rep("c", 8),
+  kbl(caption = "Table 5: Test set MAPE by neighborhood income context", align = rep("c", 8),
       col.names = c("Income Context", "Average MAPE")) %>%
     # footnote("70 rows of data were missing median household income and are therefore excluded from this table.") %>% 
     kable_classic(full_width = F, html_font = "Cambria") %>% 
@@ -1203,7 +1212,7 @@ tm_layout(frame = FALSE,
           legend.outside = TRUE
           ) +
   tm_credits("Philadelphia, PA", fontface = "italic", align = "right") +
-  tm_credits("Figure 13 ", fontface = "bold", align = "right")
+  tm_credits("Figure 20 ", fontface = "bold", align = "right")
 
 income
 ```
@@ -1215,7 +1224,7 @@ st_join(mape_data, split_data) %>%
   group_by(raceContext) %>%
   summarize(mean.MAPE = scales::percent(mean(sale_price.APE, na.rm = T))) %>%
   st_drop_geometry() %>%
-  kbl(caption = "Table 9: Test set MAPE by neighborhood race context", align = rep("c", 8),
+  kbl(caption = "Table 6: Test set MAPE by neighborhood race context", align = rep("c", 8),
       col.names = c("Race Context", "Average MAPE")) %>%
     # footnote("70 rows of data were missing median household income and are therefore excluded from this table.") %>% 
     kable_classic(full_width = F, html_font = "Cambria") %>% 
@@ -1237,11 +1246,11 @@ race <- tm_shape(na.omit(split_data)) +
  tm_shape(hoods) +
  tm_borders(lwd = 1) +
 tm_layout(frame = FALSE,
-          main.title = "Income Across Philadelphia",
+          main.title = "Race Across Philadelphia",
           legend.outside = TRUE
           ) +
   tm_credits("Philadelphia, PA", fontface = "italic", align = "right") +
-  tm_credits("Figure 13 ", fontface = "bold", align = "right")
+  tm_credits("Figure 21", fontface = "bold", align = "right")
 
 race
 ```
