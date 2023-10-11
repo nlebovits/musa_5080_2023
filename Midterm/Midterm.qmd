@@ -20,24 +20,25 @@ execute:
 ---
 
 ## Summary
+Below, we implement an Ordinary Least Squares (OLS) regression to predict sale prices for homes in Philadelphia. We create a dataset of features taken from Zillow data and several public data sources and attempt to narrow them down to a list of predictors that will minimize the mean absolute percent error (MAPE) of predictions. We find that our model 1) has limited accuracy, with a MAPE of more than 30%, and 2) does not generalize well to lower income or non-white neighborhoods. We attribute these shortcomings to poor selection of predictor variables and the inadequacy of OLS regression when dealing with data of a fundamentally spatial nature. To improve our model, we recommend a more parsimonious selection of variables and the consideration of the spatial nature of the data through the use of a method such as geographically-weighted regression.
 
 ## Introduction
 
 Housing market price estimators like Zillow's Zestimate can give a general idea of a house's value, but more often than not, professional appraisers and real estate agents do no recommend relying on these tools as they tend to have high error rates. In addition to inconveniencing a home buyer or seller, the high error rates of automated valuation models (AVM; e.g. Zillow's Zestimate) may misrepresent low-income and majority-minority, especially Black-majority neighborhoods where home price value errors are higher compared to majority-white neighborhoods[^1]. As well, a home's value is often used to determine a homeowner's mortgage loan approval and to inform policymakers on the general state of the housing market [^2]. Inaccurate housing estimates may lead to misinformed housing and economic policies disproportionately affecting non-white neighborhoods, reifying racial and class disparities in housing.
 
-[^1]: Michael Neal, Sarah Strochak, Linna Zhu, and Caitlin Young, “How Automated valuation models can disproportionately affect majority-Black neighborhoods,” Urban Institute, December, 2020.
+[^1]: Michael Neal, Sarah Strochak, Linna Zhu, and Caitlin Young, "How Automated valuation models can disproportionately affect majority-Black neighborhoods," Urban Institute, December, 2020.
 
 [^2]: Alan S. Dornfest, Chair Bill Marchand, Doug Warr, August Dettbarn, Wayne Forde, Joshua Myers, and Carol Neihardt, Standard on automated valuation models (AVMs), International Association of Assessing Officers, July, 2018.
 
-There are many reasons why these price estimators may be inaccurate (e.g. data availability, inability to capture temporal housing market patterns, etc.), and among them lack of local intelligence stands out. Each urban area has its own culture and unique characteristics that need to be factored into AVMs in order to more accurately predict housing prices. As residents and spatial analysts of the city of Philadelphia, our team was able to apply our knowledge of the city and its neighborhoods to the creation of an improved prediction model. 
+There are many reasons why these price estimators may be inaccurate (e.g. data availability, inability to capture temporal housing market patterns, etc.), and among them lack of local intelligence stands out. Each urban area has its own culture and unique characteristics that need to be factored into AVMs in order to more accurately predict housing prices. As residents and spatial analysts of the city of Philadelphia, our team was able to apply our knowledge of the city and its neighborhoods to the creation of an improved prediction model.
 
-Even with a deeper understanding of Philadelphia, creating an improved home price estimator model for the city is still a challenging task. All kinds of data are available including health and human services, transportation, public safety, parks and recreation, and food in addition to the traditional housing market and attribute data used in AVMs. Though all of these data are interrelated and inform each other and home price, limiting the amount of predictors to only keep those that are most informative can be a daunting task. We often create new features by redefining (sometimes by combining) variables that improve our prediction of home price. Luckily we implement technology that makes this decision-making process easier. 
+Even with a deeper understanding of Philadelphia, creating an improved home price estimator model for the city is still a challenging task. All kinds of data are available including health and human services, transportation, public safety, parks and recreation, and food in addition to the traditional housing market and attribute data used in AVMs. Though all of these data are interrelated and inform each other and home price, limiting the amount of predictors to only keep those that are most informative can be a daunting task. We often create new features by redefining (sometimes by combining) variables that improve our prediction of home price. Luckily we implement technology that makes this decision-making process easier.
 
 Another possible challenge when it comes to constructing a hone price estimator model is data availability, or rather unavailability. Some neighborhoods, especially low-income neighborhoods and regions where the population does not trust in government, data that we use in our AVMs may be missing for various reasons. Some of the variables that are most informative to a model may be resources that are unavailable in low-income neighborhoods. On the other hand, even if the resources are available and utilized in the community, a region with high distrust in government may not report information in the government Census and other data surveys, resulting in missing data. Ultimately, if a model relies on variables that are missing in neighborhoods with certain characteristics, it will predict home price with more error in these regions.
 
 Keeping these potential pitfalls in mind, our overall modeling strategy was as follows. We first gathered open-source data about Philadelphia to examine and create variables of Philadelphia houses and neighborhoods to assess whethere it made sense to include them in our model. We then input a selection of predictors into an ordinary least squares (OLS) regression, specifically an OLS step-wise regression, to narrow down and determine the combination of the most informative predictors. After assessing our model fit by looking at mean absolute error (MAE) and mean absolute percentage error (MAPE), we revised our selection of predictors and repeated the process until we were happy with our model.
 
-Our newly improved model uses 21 independent variables to predict housing prices in Philadelphia and is able to do so with a mean MAE of $68,687.82 and mean MAPE of 36.74% (with 100-fold cross-validation; see Table 7). Notable predictors in our OLS regression are number of bathrooms, percent of population that is white (in the census tract that the house is part of), and the rating of a house's interior condition (see table 5). We observed clustering in home price predictions with a Moran's *I* of 0.615 (p < 0.001) meaning our model errors exhibit spatial autocorrelation (see figure 10). We found that our model predicts with higher errors for majority non-White neighborhoods and low-income neighborhoods (see tables 8 and 9).
+Our newly improved model uses 21 independent variables to predict housing prices in Philadelphia and is able to do so with a mean MAE of \$68,687.82 and mean MAPE of 36.74% (with 100-fold cross-validation; see Table 7). Notable predictors in our OLS regression are number of bathrooms, percent of population that is white (in the census tract that the house is part of), and the rating of a house's interior condition (see table 5). We observed clustering in home price predictions with a Moran's *I* of 0.615 (p \< 0.001) meaning our model errors exhibit spatial autocorrelation (see figure 10). We found that our model predicts with higher errors for majority non-White neighborhoods and low-income neighborhoods (see tables 8 and 9).
 
 ```{r setup}
 library(tidyverse)
@@ -63,9 +64,17 @@ library(psych)
 library(kableExtra)
 library(gridExtra)
 
-tmap_mode('view')
+tmap_mode('plot')
 options(tigris_use_cache = TRUE, scipen = 999)
 ggthemr('flat')
+
+
+pal_full <- c("#34495e", "#3498db", "#2ecc71", "#f1c40f", "#e74c3c", "#9b59b6", "#1abc9c", "#f39c12", "#d35400")
+plt_pal <- c("#3498db", "#2ecc71", "#f1c40f")
+corr_mat_pal <- c("#34495e", "white", "#e74c3c")
+
+mypalette1 <- colorRampPalette(c("#bbf0e1","#025e44"))(5)
+mypalette2 <- colorRampPalette(c("#f0cab9","#6e2e10"))(5)
 
 crs <- "epsg:2272"
 
@@ -74,6 +83,7 @@ set.seed(42)
 # load functions from functions.R
 source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
 ```
+
 ## Methods
 
 ### Data Sources
@@ -111,29 +121,28 @@ data <- data %>%
           mutate(non_resident_owner = mailing_address_1 == mailing_street) %>%
           select(-drop) %>%
           mutate_at(to_cat, as.character) %>% 
-          # mutate(house_extension = as.numeric(house_extension)) %>% # for some reason, this *really* fucks up the model
           st_transform(crs = crs) %>%
-          mutate(number_of_rooms = ifelse(is.na(number_of_rooms), number_of_bedrooms + number_of_bathrooms, number_of_rooms))
-
+          mutate(
+            nb = st_knn(geometry, 5),
+            wt = st_weights(nb),
+            total_area = ifelse(is.na(total_area), purrr::map_dbl(find_xj(total_area, nb), mean, na.rm = TRUE), total_area),
+            total_livable_area = ifelse(is.na(total_livable_area), purrr::map_dbl(find_xj(total_livable_area, nb), mean, na.rm = TRUE), total_livable_area),
+            number_of_bathrooms = round(ifelse(is.na(number_of_bathrooms), purrr::map_dbl(find_xj(number_of_bathrooms, nb), mean, na.rm = TRUE), number_of_bathrooms)),
+            number_of_bedrooms = round(ifelse(is.na(number_of_bedrooms), purrr::map_dbl(find_xj(number_of_bedrooms, nb), mean, na.rm = TRUE), number_of_bedrooms)),
+            number_of_rooms = ifelse(is.na(number_of_rooms), number_of_bedrooms + number_of_bathrooms, number_of_rooms),
+            fireplaces = round(ifelse(is.na(fireplaces), purrr::map_dbl(find_xj(fireplaces, nb), mean, na.rm = TRUE), fireplaces)),
+            interior_condition = round(ifelse(is.na(interior_condition), purrr::map_dbl(find_xj(interior_condition, nb), mean, na.rm = TRUE), interior_condition)),
+            exterior_condition = round(ifelse(is.na(exterior_condition), purrr::map_dbl(find_xj(exterior_condition, nb), mean, na.rm = TRUE), exterior_condition)),
+            number_stories = round(ifelse(is.na(number_stories), purrr::map_dbl(find_xj(number_stories, nb), mean, na.rm = TRUE), number_stories)),
+            garage_spaces = round(ifelse(is.na(garage_spaces), 0, garage_spaces)), # per OPA's metadata, NA indicates 0 garage spaces
+            sale_price_NA = ifelse(sale_price == 0, NA, sale_price),
+                 price_lag = st_lag(sale_price_NA, nb, wt, na_ok = T)) %>% #spatial lag of sale price
+          select(-c(nb, wt, sale_price_NA))
 
 data <- data[phl, ]
 keep_columns <- sapply(data, function(col) length(unique(col)) > 1) #drop columns with only one unique value (i.e., no variance)
 data <- data[, keep_columns]
 
-# as.integer(sqrt(length(unique(data$building_code_description_new))))
-# 
-# data %>%
-#   group_by(building_code_description_new) %>%
-#   summarize(avg_sale_price = mean(sale_price)) %>%
-#   ggplot() +
-#   geom_col(aes(x = reorder(building_code_description_new, avg_sale_price), y = avg_sale_price)) +
-#   theme(axis.text.x = element_text(hjust = 1, angle = 45))
-
-# over 800,000
-# over 600,000
-# 0er 400,000
-# over 200,000
-# under 200,000
 
 avg_sale_prices_x_building_type <- data %>%
   group_by(building_code_description_new) %>%
@@ -149,15 +158,6 @@ avg_sale_prices_x_building_type <- data %>%
   st_drop_geometry()
 
 data <- left_join(data, avg_sale_prices_x_building_type, by = "building_code_description_new")
-
-
-# data %>%
-#   group_by(quality_grade) %>%
-#   summarize(avg_price = mean(sale_price)) %>%
-#   arrange(desc(avg_price)) %>%
-#   ggplot() +
-#   geom_col(aes(x = reorder(quality_grade, avg_price),
-#                y = avg_price))
 
 data <- data %>%
           mutate(quality_grade = case_when(
@@ -175,17 +175,6 @@ hoods <- st_read(hoods_path, quiet = T) %>%
   select(mapname)
 
 data <- st_join(data, hoods)
-
-# 
-# as.integer(sqrt(length(unique(data$mapname))))
-# 
-# data %>%
-#   group_by(mapname) %>%
-#   summarize(avg_sale_price = mean(sale_price)) %>%
-#   arrange(desc(avg_sale_price)) %>%
-#   ggplot() +
-#   geom_histogram(aes(x = avg_sale_price), bins = 12) +
-#   scale_x_continuous(breaks = c(50000, 100000, 250000, 500000, 1000000))
 
 avg_sale_prices_x_hood <- data %>%
   group_by(mapname) %>%
@@ -211,7 +200,7 @@ phl_acs <- phl_acs %>%
                 pctPov
               ))
 data <- st_join(data, phl_acs) %>% 
-  mutate(pctWhite = ifelse(pctWhite > 1, 1, pctWhite)) # there were some values > 1 here. not sure what's happening 
+  mutate(pctWhite = ifelse(is.na(pctWhite), purrr::map_dbl(find_xj(pctWhite, nb), mean, na.rm = TRUE), pctWhite)) # there were some values > 1 here. not sure what's happening 
 
 ### tree canopy cover-----------------------------------------------
 # url <- "https://national-tes-data-share.s3.amazonaws.com/national_tes_share/pa.zip.zip"
@@ -230,19 +219,8 @@ data <- st_join(data, phl_acs) %>%
 # 
 # data <- st_join(data, phl_tree_canopy)
 
-### spatial lag of sale price-----------------------------------------------
-# data <- data %>% 
-#           mutate(nb = st_knn(geometry, k = 15),
-#                  wt = st_weights(nb),
-#                  price_lag = st_lag(sale_price, nb, wt, na_ok = T)) %>%
-#           select(-c(nb, wt))
 
-data <- data %>%
-          mutate(sale_price_NA = ifelse(sale_price == 0, NA, sale_price),
-                 nb = st_knn(geometry, k = 15),
-                 wt = st_weights(nb),
-                 price_lag = st_lag(sale_price_NA, nb, wt, na_ok = T)) %>%
-          select(-c(nb, wt, sale_price_NA))
+
 
 ### proximity to commmercial corridors-----------------------------------------------
 corridors_path <- "https://opendata.arcgis.com/datasets/f43e5f92d34e41249e7a11f269792d11_0.geojson"
@@ -256,6 +234,8 @@ y <- rsgeo::as_rsgeo(corridors)
 
 # calculate distance
 data$dist_to_commerce <- rsgeo::distance_euclidean_pairwise(x, y[nearest_fts])
+data <- data %>%
+          mutate(dist_to_commerce = log(dist_to_commerce + 1)) # log transform
 
 ### proximity to downtown-----------------------------------------------
 # downtown <- st_sfc(st_point(c(-75.16408, 39.95266)), crs = 4326)
@@ -288,9 +268,6 @@ data$dist_to_commerce <- rsgeo::distance_euclidean_pairwise(x, y[nearest_fts])
 # 
 # data <- cbind(data, guncrime) 
 
-```
-
-```{r define reg_data}
 # data %>%
 #   group_by(mapname) %>%
 #   summarize(avg_sale_price = mean(sale_price)) %>%
@@ -304,6 +281,7 @@ data$dist_to_commerce <- rsgeo::distance_euclidean_pairwise(x, y[nearest_fts])
 # ols_step_best_subset(model)
 # model <- lm(sale_price ~ ., data = numeric_only)
 # aic_preds <- ols_step_both_aic(model)$predictors
+
 keep_vars <- c("price_lag",
                "garage_spaces",
                "total_livable_area",
@@ -316,12 +294,12 @@ keep_vars <- c("price_lag",
                "interior_condition",
                "number_stories",
                "pctWhite",
-               "number_of_bedrooms",
+              # "number_of_bedrooms",
                "exterior_condition",
                "dist_to_commerce",
                "year_built",
                "totPop",
-               "total_area",
+            #  "total_area",
                "sale_price", 
                "hood_price_class", 
                "building_type_price_class", 
@@ -352,73 +330,7 @@ dummied_data <- data_to_dummy %>%
                               building_type_price_class,
                               quality_grade))
 
-# impute missing data
-# to do this, have to remove to_predict (no characters are allowed + this has no NAs)
-# convert binary + integer (number of rooms) data into factors before imputing
-# there are some rows with 0 or 1 for total_area and total_livable_area. since this is impossible, we're replacing them with NA and imputing
-
-# dummied_data_toimpute <- dummied_data %>% 
-#   st_drop_geometry() %>% 
-#   dplyr::select(-c(geometry,to_predict)) %>% 
-#   mutate(total_area = ifelse(total_area < 2, NA, total_area),
-#          total_livable_area = ifelse(total_livable_area < 2, NA, total_livable_area),
-#          garage_spaces = as.factor(garage_spaces),
-#          number_of_rooms = as.factor(number_of_rooms),
-#          number_of_bathrooms = as.factor(number_of_bathrooms),
-#          number_of_bedrooms = as.factor(number_of_bedrooms),
-#          fireplaces = as.factor(fireplaces),
-#          interior_condition = as.factor(interior_condition),
-#          exterior_condition = as.factor(exterior_condition),
-#          number_stories = as.factor(number_stories))
-
-# method without turning num vars to factors, round to nearest integer where necessary after imputation
-# number of bedrooms, bathrooms, and rooms == 0 need to be replaced with avg values
-# year_built == 0 needs to be replaced with average year
-avg_rooms <- dummied_data %>% filter(number_of_rooms > 0, !is.na(number_of_rooms)) %>% 
-  dplyr::select(number_of_rooms) %>% summarise(avg_rooms = mean(number_of_rooms)) %>% pull(avg_rooms) %>% round()
-avg_beds <- dummied_data %>% filter(number_of_bedrooms > 0, !is.na(number_of_bedrooms)) %>% 
-  dplyr::select(number_of_bedrooms) %>% summarise(avg_bedrooms = mean(number_of_bedrooms)) %>% pull(avg_bedrooms) %>% round()
-avg_bath <- dummied_data %>% filter(number_of_bathrooms > 0, !is.na(number_of_bathrooms)) %>% 
-  dplyr::select(number_of_bathrooms) %>% summarise(avg_bathrooms = mean(number_of_bathrooms)) %>% pull(avg_bathrooms) %>% round()
-avg_year <- dummied_data %>% filter(year_built > 0, !is.na(year_built)) %>% 
-  dplyr::select(year_built) %>% summarise(avg_year = mean(year_built)) %>% pull(avg_year) %>% round()
-
-dummied_data_toimpute2 <- dummied_data %>% 
-  st_drop_geometry() %>% 
-  dplyr::select(-c(geometry,to_predict)) %>% 
-  mutate(number_of_rooms = ifelse(is.na(number_of_rooms) | number_of_rooms == 0,avg_rooms,number_of_rooms),
-         number_of_bedrooms = ifelse(is.na(number_of_bedrooms) | number_of_bedrooms == 0,avg_beds,number_of_bedrooms),
-         number_of_bathrooms = ifelse(is.na(number_of_bathrooms) | number_of_bathrooms == 0,avg_bath,number_of_bathrooms),
-         year_built = ifelse(is.na(year_built) | year_built == 0,avg_year,year_built),
-         total_area = ifelse(total_area < 2, NA, total_area),
-         total_livable_area = ifelse(total_livable_area < 2, NA, total_livable_area))
-
-# imp_data <- missForest(dummied_data_toimpute,ntree = 20)$ximp %>%
-#               cbind(dummied_data %>% dplyr::select(to_predict))
-
-# when rendering, suppressing this chunk for now for sake of time
-# imp_data2 <- missForest(dummied_data_toimpute2,ntree = 20)$ximp %>%
-#               cbind(dummied_data %>% dplyr::select(to_predict))
-
-# saving imp_data so I don't have to run it again
-# write_csv(imp_data, "imputed_data_wfactors_231010.csv")
-# write_csv(imp_data2, "imputed_data_231011.csv")
-
-# imp_data <- read_csv("imputed_data_wfactors_231010.csv")
-imp_data2 <- read_csv("imputed_data_231011.csv")
-
-# for imp_data2, round to nearest whole number for garage_spaces, number_of_rooms, number_of_bathrooms, fireplaces, interior_condition,number_stories,number_of_bedrooms,exterior_condition
-imp_data <- imp_data2 %>% 
-  mutate(garage_spaces = round(garage_spaces),
-         number_of_rooms = round(number_of_rooms),
-         number_of_bathrooms = round(number_of_bathrooms),
-         fireplaces = round(fireplaces),
-         interior_condition = round(interior_condition),
-         number_stories = round(number_stories),
-         number_of_bedrooms = round(number_of_bedrooms),
-         exterior_condition = round(exterior_condition))
-
-reg_data <- imp_data %>%
+reg_data <- dummied_data %>%
               filter(to_predict == "MODELLING") %>% # only keep modelling data
               select(-c(to_predict))
 
@@ -426,26 +338,25 @@ reg_data <- imp_data %>%
 reg_data_geom <- data_to_dummy %>% 
   filter(toPredict == "MODELLING") %>%
   dplyr::select(musaID,geometry)
-
 ```
 
+#### Exploratory Analysis
 
-#### Exploratory Analysis 
-
-We first limited studentData to rows with realistic values for sale price (sale_price > 1). After combining all data described above (matching by geographical location), we explored the relationship between variables and sale price. Scatterplots (like those of Figure 1) plot sale price as a function of interesting predictors. Plots B and D show that total livable area (measured in square ft) and the spatial lag of home price (using 15 nearest neighbors) have strong positive relationships with sale price. As expected, as median household income (measured at the census tract level) increases, so does the sale price of a home, though this positive relationship is not as strong as that with the previously mentioned features. Another interesting relationship we see in figure 1 is that of distance to nearest commercial center and sale price. Though one might expect a strong positive correlation between these two variables, the data shows a rather weak relationship between the two.
+We first limited studentData to rows with realistic values for sale price (sale_price \> 1). After combining all data described above (matching by geographical location), we explored the relationship between variables and sale price. Scatterplots (like those of Figure 1) plot sale price as a function of interesting predictors. Plots B and D show that total livable area (measured in square ft) and the spatial lag of home price (using 15 nearest neighbors) have strong positive relationships with sale price. As expected, as median household income (measured at the census tract level) increases, so does the sale price of a home, though this positive relationship is not as strong as that with the previously mentioned features. Another interesting relationship we see in figure 1 is that of distance to nearest commercial center and sale price. Though one might expect a strong positive correlation between these two variables, the data shows a rather weak relationship between the two.
 
 ```{r 4 interesting scatters}
 # below is just a template of the code
 st_drop_geometry(reg_data) %>%
   dplyr::select(sale_price,dist_to_commerce,price_lag,total_livable_area,med_hh_inc) %>%
-  rename(`A. Distance to Commercial Center (ft)` = dist_to_commerce,
-         `B. Total Livable Area (sq ft)` = total_livable_area,
-         `C. Median Household Income ($)` = med_hh_inc,
-         `D. Spatial Lag of Home Sale Price` = price_lag) %>%
+  rename(`Distance to Commercial Center (ft)` = dist_to_commerce,
+         `Total Livable Area (sq ft)` = total_livable_area,
+         `Median Household Income ($)` = med_hh_inc,
+         `Spatial Lag of Home Sale Price` = price_lag) %>%
   gather(Variable, Value, -sale_price) %>%
   ggplot(aes(Value, sale_price)) +
-  ggplot2::geom_point(size = .5, color = "#6e2e10", alpha = 0.4) + 
-  geom_smooth(method = "lm", se=F, colour = "#027a59") +
+  ggplot2::geom_point(size = .5, alpha = 0.2) + 
+  geom_smooth(method = "lm", se=F) +
+  scale_color_manual(values = plt_pal) +
   facet_wrap(~Variable, ncol = 2, scales = "free") +
   labs(title = "Price as a function of 4 variables of interest",
        y = "Home Sale Price", x = "",
@@ -453,10 +364,9 @@ st_drop_geometry(reg_data) %>%
   theme_minimal()
 ```
 
-
 #### Feature Engineering
 
-We observed some impossible or missing values in our data, namely values of zero or one in total_area and total_livable_area, missing values for spatial lag in price, zero for number of rooms, bedrooms and bathrooms, and zero for year_built. Though we knew why some of these variables were missing (e.g. spatial lag of price was missing for those that had a house in the challenge set as one of the 15 nearest neighbors since we set sale price for those houses as missing for this calculation), we had to get creative for the other cases. The different solutions we implemented were replacing impossible values as NA and imputing more reasonable values (in the case of total_area and total_livable_area) and replacing zeros with the mean value of that variable (for year_built, number of rooms, number of bathrooms, and number of bedrooms). 
+We observed some impossible or missing values in our data, namely values of zero or one in total_area and total_livable_area, missing values for spatial lag in price, zero for number of rooms, bedrooms and bathrooms, and zero for year_built. Though we knew why some of these variables were missing (e.g. spatial lag of price was missing for those that had a house in the challenge set as one of the 15 nearest neighbors since we set sale price for those houses as missing for this calculation), we had to get creative for the other cases. The different solutions we implemented were replacing impossible values as NA and imputing more reasonable values (in the case of total_area and total_livable_area) and replacing zeros with the mean value of that variable (for year_built, number of rooms, number of bathrooms, and number of bedrooms).
 
 For categorical variables such as building type price class, quality grade, and neighborhood price class, we created dummy variables. Dummy variables help us break down each category of a categorical variable into its own feature, usually made up of ones and zeros indicating whether that row has that feature or not, respectively.
 
@@ -464,25 +374,12 @@ We have provided summary and descriptive statistics of the final predictors we d
 
 ```{r summary stats}
 # reorder numeric data
-sum_stat_data <- data_to_dummy %>% 
-  st_drop_geometry() %>% 
-  dplyr::select(-c(garage_spaces, medHHInc, number_of_rooms, number_of_bathrooms, depth, off_street_open, fireplaces, musaID,
-                   interior_condition, number_stories, number_of_bedrooms, exterior_condition, total_area, sale_price, 
-                   price_lag, total_livable_area, year_built)) %>% 
-  cbind(imp_data %>% dplyr::select(garage_spaces, med_hh_inc, number_of_rooms, number_of_bathrooms, depth,price_lag, 
-                                   off_street_open, fireplaces,interior_condition, number_stories,number_of_bedrooms,
-                                   exterior_condition, total_area,total_livable_area, year_built)) %>% 
-  dplyr::select( # select in the desired order
-    total_area, total_livable_area, number_of_rooms, number_of_bathrooms, number_of_bedrooms, number_stories, garage_spaces, 
-    fireplaces, depth, interior_condition, exterior_condition, year_built, quality_grade, building_type_price_class,
-    off_street_open, # internal characteristics
-    dist_to_commerce, # amenities/public services
-    price_lag, med_hh_inc, pctWhite, totPop, hood_price_class  # spatial variables
-  )
+sum_stat_data <- reg_data
 
 # summary statistics for numeric variables
-sum_stat_table <- sum_stat_data %>% 
-  dplyr::select(-c(building_type_price_class,quality_grade,hood_price_class)) %>% 
+sum_stat_table <- reg_data %>% 
+  st_drop_geometry() %>%
+  select(where(is.numeric)) %>%
   psych::describe() %>% dplyr::select(mean:median,min,max) %>% 
   mutate(Mean = as.character(round(mean)), 
          SD = as.character(round(sd)), 
@@ -495,7 +392,7 @@ sum_stat_table <- sum_stat_data %>%
 
 # keep pctWhite rounded to nearest third
 sum_stat_pctwhite <- sum_stat_data %>% 
-  dplyr::select(pctWhite) %>% 
+  dplyr::select(pct_white) %>% 
   psych::describe() %>% dplyr::select(mean:median,min,max) %>% 
   mutate(Mean = as.character(round(mean,3)), 
          SD = as.character(round(sd,3)), 
@@ -531,13 +428,14 @@ sum_stat_table %>%
   kable_classic(full_width = F, html_font = "Cambria")
 
 # descriptive statistics for categorical data
-sum_stat_data %>% 
-  dplyr::select(building_type_price_class) %>% 
-  mutate(building_type_price_class = 
-           factor(building_type_price_class, 
-           levels = c("least expensive","less expensive","expensive","more expensive","most expensive"))) %>% 
-  table() %>% as.data.frame() %>% 
-  mutate(Description = c("Building types with average sale price of under 200,000 USD",
+# data$building_code_description_new <- 
+
+data %>% 
+  st_drop_geometry() %>%
+  group_by(building_type_price_class) %>%
+  summarize(row_count = n()) %>%
+  mutate(building_type_price_class = factor(building_type_price_class, levels = c("least expensive", "less expensive", "expensive", "more expensive", "most expensive")),
+    Description = c("Building types with average sale price of under 200,000 USD",
                          "Building types with average sale price between 200,000.01 and 400,000 USD",
                          "Building types with average sale price between 400,000.01 and 600,000 USD",
                          "Building types with average sale price between 600,000.01 and 800,000 USD",
@@ -551,7 +449,8 @@ sum_stat_data %>%
   mutate(hood_price_class = 
            factor(hood_price_class, 
            levels = c("least expensive","less expensive","expensive","more expensive","most expensive"))) %>% 
-  table() %>% as.data.frame() %>% 
+  table() %>% 
+  as.data.frame() %>% 
   mutate(Description = c("Houses in a neighborhood with average sale price of under 100,000 USD",
                          "Houses in a neighborhood with average sale price between 100,000.01 and 250,000 USD",
                          "Houses in a neighborhood with average sale price between 240,000.01 and 500,000 USD",
@@ -576,118 +475,206 @@ sum_stat_data %>%
 
 ```
 
-
 #### Checking for Collinearity
 
 When using numerous predictors in a model, it is important to inspect for collinearity, or how similar or correlated predictors are to each other. We explored these relationships between features by examining a correlation matrix. As shown in Figure 2, some variables such as number of rooms, number of bedrooms and number of bathrooms have strong collinearity. There is also a high correlation between median household income, spatial lag in price, and percent of population that is white. Taking note of these patterns, we kept our subset of predictors as our next step accounted for collinearity.
 
 ```{r corr matrix of num vars}
-numeric_vars <- sum_stat_data %>% 
-  dplyr::select(-c(building_type_price_class,quality_grade,hood_price_class)) %>% 
-  mutate_if(is.factor,as.numeric) %>% 
-  cbind(data_to_dummy %>% st_drop_geometry() %>% dplyr::select(sale_price))
-  
-ggcorrplot(
-  round(cor(numeric_vars), 1), 
-  p.mat = cor_pmat(numeric_vars),
-  ggtheme = ggplot2::theme_gray,
-  colors = c("#025e44", "white", "#6e2e10"),
+# numeric_vars <- sum_stat_data %>% 
+#   dplyr::select(-c(building_type_price_class,quality_grade,hood_price_class)) %>% 
+#   mutate_if(is.factor,as.numeric) %>% 
+#   cbind(data_to_dummy %>% st_drop_geometry() %>% dplyr::select(sale_price))
+
+numeric_vars <- reg_data %>% 
+  select(where(is.numeric))
+
+# ggcorrplot(
+#   round(cor(numeric_vars), 1), 
+#   p.mat = cor_pmat(numeric_vars),
+#   # ggtheme = ggplot2::theme_gray,
+#   colors = corr_mat_pal,
+#   type="lower",
+#   insig = "blank") +  
+#   labs(title = "Correlation across numeric variables",
+#        caption = "Figure 2") 
+
+corr <- round(cor(numeric_vars), 1)
+p.mat <- cor_pmat(numeric_vars)
+
+ggcorrplot(corr,
+           colors = corr_mat_pal,
+           #p.mat = cor_pmat(numeric_vars),
   type="lower",
-  insig = "blank") +  
+  insig = "blank",
+  tl.cex = 6) +  
   labs(title = "Correlation across numeric variables",
        caption = "Figure 2") 
-
 ```
 
 #### Spatial Process
 
-It's also important to contextualize our predictors by looking at the spatial process of these features. It's very easy to identify the main commercial centers in Philadelphia when mapping out houses' distance to commercial centers as seen in Figure 3. We see these commercial centers clustered along some main streets in Philadelphia. 
-
-```{r dist_to_commerce map}
-# define color palettes
-mypalette1 <- colorRampPalette(c("#bbf0e1","#025e44"))(5)
-mypalette2 <- colorRampPalette(c("#f0cab9","#6e2e10"))(5)
-
-# add geometry back in
-imp_data_geom <- cbind(imp_data, data_to_dummy %>% 
-                         dplyr::select(geometry)) %>% st_as_sf() %>% 
-  mutate(num_rooms = as.numeric(number_of_rooms))
-
-# map of dist_to_commerce
-ggplot() +
-  geom_sf(data = hoods, color = "white", fill = "#f0cab9") + 
-  geom_sf(data = imp_data_geom, aes(colour = q5(dist_to_commerce)), 
-          show.legend = "point", size = .25) +
-  scale_colour_manual(values = mypalette1,
-                      labels=qBr(imp_data_geom,"dist_to_commerce"),
-                      name="Distance to Commercial\nCenter (ft)") +
-  labs(title = "Distance to nearest Commercial Center",
-       subtitle="Philadelphia, PA", # make sure to note that NAs were dropped for visualization purpose
-       caption = "Figure 3") +
-  mapTheme()
-
-```
+In building this model, it is essential to account for the spatial process of features. It is clear, for example, that prices are stratefied geographically and are higher than some neighborhoods than others. We account for this geographic feature by using neighborhoods as features in our dataset via dummy variables.
 
 ```{r build type map}
 buildtype_data <- data_to_dummy %>% 
   mutate(buildtype = factor(building_type_price_class, 
            levels = c("least expensive","less expensive","expensive","more expensive","most expensive")))
 
-# map of build type
-ggplot() +
-  geom_sf(data = hoods, color = "white", fill = "#f0cab9") + 
-  geom_sf(data = buildtype_data, aes(colour = buildtype), 
-          show.legend = "point", size = .25) +
-  scale_colour_manual(values = mypalette1,
-                      name = "Price Class of\nHouse Type") +
-  labs(title = "Price Class of House Type",
-       subtitle="Philadelphia, PA", # make sure to note that NAs were dropped for visualization purpose
-       caption = "Figure 4") +
-  mapTheme()
+price_x_hood <- avg_sale_prices_x_hood <- data %>%
+  group_by(mapname) %>%
+  summarize(avg_sale_price = mean(sale_price)) %>%
+  st_drop_geometry()
+
+price_x_hood <- left_join(hoods, price_x_hood) %>%
+                  st_as_sf()
+
+tm_shape(hoods) +
+  tm_borders() +
+tm_shape(price_x_hood) +
+  tm_polygons(col = "avg_sale_price", 
+             title = "Avg. Sale Price ($)",
+              style = "jenks", 
+             palette = "viridis", 
+             size = 0.2, 
+             alpha = 1,
+             textNA = "No Data"
+      ) +
+tm_layout(frame = FALSE,
+          main.title = "Avg. Sale Price by Neighborhood",
+          legend.outside = TRUE
+          ) +
+  tm_credits("Philadelphia, PA", fontface = "italic", align = "right") +
+  tm_credits("Figure 3", fontface = "bold", align = "right")
+```
+
+Much of this spatial process can be explained by proximity to amenities (as the adage in real estate goes, "location, location, location"). To this end, we incorporate proximity to amenities by calculating the distance of each home to the nearest commercial corridor and incorporating this into our dataset.
+
+```{r dist_to_commerce map}
+
+
+# # add geometry back in
+# imp_data_geom <- cbind(imp_data, data_to_dummy %>% 
+#                          dplyr::select(geometry)) %>% st_as_sf() %>% 
+#   mutate(num_rooms = as.numeric(number_of_rooms))
+
+tm_shape(hoods) +
+  tm_borders() +
+tm_shape(data) +
+  tm_dots(col = "dist_to_commerce", 
+             title = "Distance",
+             style = "jenks", 
+             palette = "-viridis", 
+             size = 0.1, 
+             alpha = 0.3
+      ) +
+tm_layout(frame = FALSE,
+          main.title = "Distance to Nearest Commercial Corridor",
+          legend.outside = TRUE
+          ) +
+  tm_credits("Philadelphia, PA", fontface = "italic", align = "right") +
+  tm_credits("Figure 4", fontface = "bold", align = "right") +
+  tm_credits("Distances are log-transformed from US feet", fontface = "italic", align = "right")
 
 ```
+
+#### Non-Spatial Features
+
+Not all features are inherently spatial; some, like the type of home, exert a major influence on the value of a property. In some vases, such as home type, we account for these as dummy variables.
+
+```{r build type boxplot}
+data %>%
+  st_drop_geometry() %>%
+  mutate(building_code_description_new = fct_reorder(building_code_description_new, sale_price, .fun='mean')) %>%
+  ggplot()+
+  geom_boxplot(aes(x = sale_price, y = building_code_description_new), lwd = 0.3, fill = NA, outlier.alpha = 0.1) +
+  labs(title = "Avg. Sale Price by Type of Home",
+       subtitle = "Figure X",
+       x = "Sale Price ($)") +
+  theme(axis.title.y = element_blank())
+
+```
+
+In other cases, when dealing with ordered integer values for things like interior quality of the home, we retain them as numeric data.
+
+```{r int cond boxplot}
+data %>%
+  st_drop_geometry() %>%
+  mutate(interior_condition = fct_reorder(as.factor(interior_condition), sale_price, .fun='mean')) %>%
+  ggplot()+
+  geom_boxplot(aes(x = sale_price, y = interior_condition), lwd = 0.3, fill = NA, outlier.alpha = 0.1) +
+  labs(title = "Avg. Sale Price by Interior Condition Score",
+       subtitle = "Figure X",
+       x = "Sale Price ($)",
+       y = "Interior Condition")
+
+```
+
+That said, it is worth noting that even some of these features are implicitly spatial. For example, while home type is not an explicitly spatial feature, sections of neighborhoods are often built together around the same time and in the same style. Thus, building types tend to cluster spatially in Philadelphia. Given the limitations of an OLS regression, the most we can do to account for this in our model is use dummy variables. All the same, it is worth noting.
 
 ```{r num_rooms map}
-# map of exterior_condition
-ggplot() +
-  geom_sf(data = hoods, color = "white", fill = "#f0cab9") + 
-  geom_sf(data = imp_data_geom, aes(colour = q5(num_rooms)), 
-          show.legend = "point", size = .25) +
-  scale_colour_manual(values = mypalette1,
-                      labels=qBr(imp_data_geom,"num_rooms"),
-                      name="Number of Rooms") +
-  labs(title = "Number of Rooms",
-       subtitle="Philadelphia, PA", # make sure to note that NAs were dropped for visualization purpose
-       caption = "Figure 5") +
-  mapTheme()
+
+tm_shape(hoods) +
+  tm_borders() +
+tm_shape(data) +
+  tm_dots(col = "building_code_description_new", 
+             title = "Type",
+             style = "cat", 
+             size = 0.075, 
+             alpha = 0.5
+      ) +
+tm_layout(frame = FALSE,
+          main.title = "Spatial Distribution of Building Types",
+          legend.outside = TRUE
+          ) +
+  tm_credits("Philadelphia, PA", fontface = "italic", align = "right") +
+  tm_credits("Figure 4", fontface = "bold", align = "right")
+
+
+# # map of exterior_condition
+# ggplot() +
+#   geom_sf(data = hoods, color = "white", fill = "#f0cab9") + 
+#   geom_sf(data = imp_data_geom, aes(colour = q5(num_rooms)), 
+#           show.legend = "point", size = .25) +
+#   scale_colour_manual(values = mypalette1,
+#                       labels=qBr(imp_data_geom,"num_rooms"),
+#                       name="Number of Rooms") +
+#   labs(title = "Number of Rooms",
+#        subtitle="Philadelphia, PA", # make sure to note that NAs were dropped for visualization purpose
+#        caption = "Figure 5") +
+#   mapTheme()
 
 ```
 
+Similarly, we find that total liveable area is higher in some neighborhoods than others, likely due to the housing typology, available space, and so forth. We account for this variable in our dataset as a continuous variable, but, again, it highlights the inadequacies of a non-spatial regression model.
 
-#### Map of Home Sale Prices in Philadelphia
+```{r tot area}
+area_x_hood <- avg_sale_areas_x_hood <- data %>%
+  group_by(mapname) %>%
+  summarize(avg_area = mean(total_livable_area)) %>%
+  st_drop_geometry()
 
-```{r ppsqft map}
-# create price per square foot variable
-ppsqft <- reg_data %>% dplyr::select(sale_price,total_area) %>% 
-      mutate(ppsqft_m = ifelse(total_area != 0 & total_area != 1,sale_price/total_area, NA)) %>%  # there are some places where total_area == 1
-      cbind(data_to_dummy %>% filter(toPredict == "MODELLING") %>% dplyr::select(geometry)) %>% 
-  st_as_sf() %>% 
-      filter(!is.na(ppsqft_m)) # dropping missing ppsqft_m values for a cleaner map
+area_x_hood <- left_join(hoods, area_x_hood) %>%
+                  st_as_sf()
 
-ggplot() +
-  geom_sf(data = hoods, color = "white") + 
-  geom_sf(data = ppsqft, aes(colour = q5(ppsqft_m)), 
-          show.legend = "point", size = .25) +
-  scale_colour_manual(values = mypalette2,
-                      labels=qBr(ppsqft,"ppsqft_m"),
-                      name=bquote((USD/ft^2))) +
-  labs(title = "Home Sale Price in Philadelphia",
-       subtitle="Price Per Square Foot", # make sure to note that NAs were dropped for visualization purpose
-       caption = "Figure 6") +
-  mapTheme()
+tm_shape(hoods) +
+  tm_borders() +
+tm_shape(area_x_hood) +
+  tm_polygons(col = "avg_area", 
+             title = "Avg. Total Area",
+              style = "jenks", 
+             palette = "viridis", 
+             size = 0.2, 
+             alpha = 1,
+             textNA = "No Data",
+             border.alpha = 0
+      ) +
+tm_layout(frame = FALSE,
+          main.title = "Avg. Total Area by Neighborhood",
+          legend.outside = TRUE
+          ) +
+  tm_credits("Philadelphia, PA", fontface = "italic", align = "right") +
+  tm_credits("Figure 3", fontface = "bold", align = "right")
 ```
-
-
 
 ### OLS Model
 
@@ -697,25 +684,21 @@ $$
 Y_i = \beta_0 + \beta_1 X_{1_i} + \beta_2 X_{2_i} + ... + \beta_n X_{n_i} + \epsilon_i
 $$
 
-There are assumptions that 
+When running an OLS regression, it is crucial to ensure that the following five assumptions are not violated:
 
-```{r ols model} 
-# processed_dd <- preProcess(dummied_data %>% select(-sale_price),
-#                            method = c("center", "scale", "YeoJohnson", "nzv"))
-# 
-# processed_dd
-# predict(processed_dd, newdata = dummied_data %>% select(-sale_price))
-# 
-# processed_dd$method$remove
+1.  A linear relationship between the dependent variable and predictors
 
-# 
-# model <- lm(sale_price ~ ., data = dummied_data)
-# stepwise_selection <- ols_step_both_aic(model)
-# keep_vars <- c(stepwise_selection$predictors, "sale_price")
-# 
-# final_data <- dummied_data %>% select(keep_vars) %>% st_drop_geometry()
+2.  Normality of residuals
 
+3.  Homoscedasticity
 
+4.  Independence of observations (no spatial, temporal or other forms of dependence in the data)
+
+5.  No multicollinearity
+
+Yet, specifically in the context of predictive modeling, we have greater leeway.
+
+```{r ols model}
 # book's method of doing this
 inTrain <- createDataPartition(
               y = paste(reg_data$fireplaces, reg_data$number_of_rooms,
@@ -724,32 +707,28 @@ inTrain <- createDataPartition(
 phl.training <- reg_data[inTrain,] # defining training set
 phl.test <- reg_data[-inTrain,]    # defining testing set
 
-reg.training <- 
-  lm(sale_price ~ ., data = as.data.frame(phl.training) %>% 
-                             dplyr::select(-musa_id))
+reg.training <- lm(sale_price ~ ., data = as.data.frame(phl.training) %>% dplyr::select(-c(musa_id, geometry)))
 
 # plot(reg.training) # useful plots to look at model fit
 
-phl.test <-
-  phl.test %>%
-  mutate(sale_price.Predict = predict(reg.training, phl.test), 
-         # ^^ actually adding the predicted values from model defined in reg.training
-         sale_price.Error = sale_price.Predict - sale_price,
-         sale_price.AbsError = abs(sale_price.Predict - sale_price),
-         sale_price.APE = (abs(sale_price.Predict - sale_price)) / sale_price.Predict)
+phl.test <- phl.test %>%
+              mutate(sale_price.Predict = predict(reg.training, phl.test), 
+               # ^^ actually adding the predicted values from model defined in reg.training
+               sale_price.Error = sale_price.Predict - sale_price,
+               sale_price.AbsError = abs(sale_price.Predict - sale_price),
+               sale_price.APE = (abs(sale_price.Predict - sale_price)) / sale_price.Predict)
 
-mape1 <- mean(phl.test$sale_price.APE) # 0.2826403
-mae1 <- mean(phl.test$sale_price.AbsError) # 69203.8
+mape1 <- mean(phl.test$sale_price.APE, na.rm = TRUE) # 0.2826403
+mae1 <- mean(phl.test$sale_price.AbsError, na.rm = TRUE) # 69203.8
 
 summ_reg.training <- summary(reg.training)
 summ_coeff1 <- as.data.frame(summary(reg.training)$coefficients) # same as summ_coeff
-
 ```
 
 ## Results
 
 ### Regression Results
-
+The results of our regression are underwhelming; with a mean absolute percent error (MAPE) of more than 30%, 
 ```{r polished lm summary}
 footnote1 <- paste0("R-squared: ",round(summ_reg.training$r.squared,3),
                     "; adjusted R-squared: ",round(summ_reg.training$adj.r.squared,3),
@@ -778,7 +757,6 @@ summ_coeff1 %>%
 
 ```
 
-
 ```{r table MAE/MAPE}
 data.frame(MAE = sprintf('%.2f',round(mae1,3)),
            MAPE = round(mape1,3)) %>% 
@@ -789,8 +767,9 @@ data.frame(MAE = sprintf('%.2f',round(mae1,3)),
   column_spec(2, width = "10em")
 ```
 
-
+Using k-fold cross validation with a k of 100 (i.e., 100 iterations), we find that our MAPE converges at roughly 35%. 
 ```{r CV}
+
 customSummary <- function(data, lev = NULL, model = NULL) {
   mape <- mean((abs(data$obs - data$pred)) / data$obs) * 100
   mae <- mean(abs(data$obs - data$pred))
@@ -800,16 +779,12 @@ customSummary <- function(data, lev = NULL, model = NULL) {
   out
 }
 
-# train_control <- trainControl(method = "cv", # using leave one out instead of regular cv, so gives better estimate of error
-#                               number = 10,
-#                               summaryFunction = customSummary)
-
-train_control <- trainControl(method = "cv", # using leave one out instead of regular cv, so gives better estimate of error
+train_control <- trainControl(method = "cv",
                               number = 100,
                               summaryFunction = customSummary)
 
 model <- train(sale_price ~ .,
-               data = reg_data %>% dplyr::select(-musa_id),
+               data = reg_data %>% dplyr::select(-c(musa_id, geometry)),
                trControl = train_control,
                method = "lm",
                na.action = na.exclude)
@@ -817,14 +792,6 @@ model <- train(sale_price ~ .,
 print_model <- as.data.frame(print(model))
 
 model_resample <- model$resample
-# summary(model)
-
-# coefficient data from summary of model
-# summ_coeff <- as.data.frame(summary(model)$coefficients)
-# 
-# model_for_plot <- lm(sale_price ~ ., 
-#                data = reg_data)
-# ols_plot_resid_fit(model_for_plot)
 
 data.frame(MeanMAE = print_model$MAE,
            SDMAE = round(sd(model_resample$MAE),3)) %>% 
@@ -834,47 +801,53 @@ data.frame(MeanMAE = print_model$MAE,
   kable_classic(full_width = F, html_font = "Cambria") %>% 
   column_spec(1, width = "10em") %>% 
   column_spec(2, width = "10em")
-
 ```
-
-
 
 ```{r mae hist}
 ggplot(data = model$resample) +
-  ggplot2::geom_histogram(aes(x = MAE), fill = "#027a59") +
+  ggplot2::geom_histogram(aes(x = MAE), bins = 12) +
   labs(title = "Distribution of MAE",
        subtitle = "K-Fold Cross Validation; k = 100",
        x = "Mean Absolute Error",
        y = "Count",
-       caption = "Figure 7") +
-  plotTheme()
+       caption = "Figure 7")
 ```
-
-
+Based on a scatterplot of the residuals, we notice that, as the sale price increases, the absolute error increases as well.
 ```{r predicted ~ observed}
 phl.test %>%
   dplyr::select(sale_price.Predict, sale_price) %>%
     ggplot(aes(sale_price, sale_price.Predict)) +
-  ggplot2::geom_point(color = "#6e2e10", alpha = 0.4) +
-  stat_smooth(aes(sale_price, sale_price), 
-             method = "lm", se = FALSE, size = 1, colour=mypalette1[2]) + 
-  stat_smooth(aes(sale_price.Predict, sale_price), 
-              method = "lm", se = FALSE, size = 1, colour="#027a59") +
+  ggplot2::geom_point(alpha = 0.4) +
+  geom_abline(color = pal_full[3]) +
+  geom_smooth(method = "lm", se = FALSE, color = pal_full[3], lwd = .5, lty = "dashed") +
   labs(title="Predicted sale price as a function of observed price",
-       subtitle="Light teal line represents a perfect prediction; Teal line represents prediction",
+       subtitle="Solid line indicates a hypothetical perfect prediction, \ndashed line indicates slope of actual predictions",
        caption = "Figure 8",
        x = "Observed Sale Price", y = "Predicted Sale Price") +
   theme_minimal()
 ```
+```{r resids}
+abs_error <-phl.test %>%
+  dplyr::select(sale_price.Predict, sale_price) %>%
+  mutate(abs_error = abs(sale_price.Predict - sale_price),
+        pct_error = abs_error / sale_price * 100)
 
+ggplot(abs_error, aes(x = sale_price, y = pct_error)) +
+  ggplot2::geom_point() +
+  scale_y_log10()
+
+```
 
 ```{r resid map}
+
+
+
 resids_data <- cbind(reg.training$model,
                   reg.training$residuals,
-                  reg.training$fitted.values,
-                  phl.training$musa_id) %>%
+                  length(reg.training$fitted.values),
+                  length(phl.training$musa_id) %>%
                 rename(musa_id = `phl.training$musa_id`) %>% 
-                left_join(dummied_data %>% dplyr::select(musa_id, geometry), by = "musa_id") %>% 
+                inner_join(dummied_data %>% dplyr::select(musa_id, geometry), by = "musa_id") %>% 
               mutate(resids = `reg.training$residuals`,
                      pred_value = `reg.training$fitted.values`) %>%
             st_sf()
@@ -892,7 +865,6 @@ ggplot() +
   mapTheme()
 
 ```
-
 
 ```{r morans i}
 # adapted from code chunk: autocorr
@@ -935,8 +907,8 @@ spdep::moran.plot(data_nb$sale_price, nb2listw(data_nb$nb),
 # add caption that says Figure 11
 ```
 
+TO DO: Provide a map of your predicted values for where 'toPredict' is both "MODELLING" and "CHALLENGE"
 
-TO DO: Provide a map of your predicted values for where ‘toPredict’ is both “MODELLING” and “CHALLENGE”
 ```{r toPredict model + chal}
 inTrain2 <- createDataPartition(
               y = paste(imp_data$fireplaces, imp_data$number_of_rooms,
@@ -979,9 +951,10 @@ ggplot() +
   mapTheme()
 ```
 
-In comparison to the map of observed sale prices (figure 6), we can see in this map of the predicted sale price (including both modelling and challenge data; figure 12) that our model generally predicts prices well, but overpredicts sale price in the northeast region as well as the northwestern tip of Philadelphia. 
+In comparison to the map of observed sale prices (figure 6), we can see in this map of the predicted sale price (including both modelling and challenge data; figure 12) that our model generally predicts prices well, but overpredicts sale price in the northeast region as well as the northwestern tip of Philadelphia.
 
 TO DO: Using the test set predictions, provide a map of mean absolute percentage error (MAPE) by neighborhood. (code chunk reids is close to what we want, but use MAPE instead of resids)
+
 ```{r MAPE by neighborhood}
 # code adapted from resids code chunk + book
 # by "test set" do they mean the new test set with both modelling and challenge data?
@@ -1000,18 +973,28 @@ mape_x_hood <- st_drop_geometry(mape_data) %>%
             mean.price = mean(sale_price, na.rm = T),
             mean.pred.price = mean(sale_price.Predict, na.rm = T)) 
 
-mape_x_hood %>%
+mapXHood <- mape_x_hood%>%
   ungroup() %>% 
   left_join(hoods) %>%
-    st_sf() %>%
-    ggplot() + 
-      geom_sf(aes(fill = mean.MAPE)) +
-      # geom_sf(data = bothRegressions, colour = "black", size = .5) +
-      scale_fill_gradient(low = mypalette2[1], high = mypalette2[5],
-                          name = "MAPE") +
-      labs(title = "Mean test set MAPE by neighborhood",
-           caption = "Figure 13") +
-      mapTheme()
+    st_sf()
+
+tm_shape(hoods) +
+  tm_borders() +
+tm_shape(mapXHood) +
+  tm_polygons(col = "mean.MAPE", 
+             title = "MAPE",
+             style = "jenks", 
+             palette = "viridis", 
+             size = 0.1, 
+             alpha = 0.5
+      ) +
+tm_layout(frame = FALSE,
+          main.title = "Mean test set MAPE by neighborhood",
+          legend.outside = TRUE
+          ) +
+  tm_credits("Philadelphia, PA", fontface = "italic", align = "right") +
+  tm_credits("Figure 13 ", fontface = "bold", align = "right")
+
 
 # mape_x_hood <- mape_data %>%
 #                   group_by(mapname) %>%
@@ -1048,9 +1031,8 @@ mape_x_hood %>%
 #   mapTheme()
 ```
 
+TO DO: Provide a scatterplot plot of MAPE by neighborhood as a function of mean price by neighborhood. aki: are they talking about predicted price or actual price? actual price plotted for now
 
-TO DO: Provide a scatterplot plot of MAPE by neighborhood as a function of mean price by neighborhood.
-aki: are they talking about predicted price or actual price? actual price plotted for now
 ```{r scatter MAPE price}
 st_drop_geometry(mape_x_hood) %>%
   ggplot(aes(mean.price, mean.MAPE)) +
@@ -1065,8 +1047,8 @@ st_drop_geometry(mape_x_hood) %>%
 # possibly add neighborhood names of extreme outliers
 ```
 
+TO DO: Using tidycensus, split your study area into two groups (perhaps by race or income) and test your model's generalizability. Is your model generalizable?
 
-TO DO: Using tidycensus, split your study area into two groups (perhaps by race or income) and test your model’s generalizability. Is your model generalizable?
 ```{r income generalizability}
 city_mean_inc <- round(mean(phl_acs$medHHInc,na.rm=T),2)
 
@@ -1111,9 +1093,6 @@ st_join(mape_data, split_data) %>%
     kable_classic(full_width = F, html_font = "Cambria") %>% 
   column_spec(1, width = "12em") %>% column_spec(2, width = "12em")
 ```
-
-
-
 
 ```{r autocorr}
 # data_nb <- data %>% 
@@ -1193,25 +1172,15 @@ tm_shape(error_x_hood) +
 #               )
 ```
 
-```{r lisa map}
-lisa = local_moran(data_nb$sale_price, data_nb$nb, data_nb$wt, nsim = 999)
-data_nb <- cbind(data_nb, lisa)
-
-lisa_sample <- sample_n(data_nb, 100)
-
-tmap_mode('view')
-
-tm_shape(lisa_sample) +
-  tm_dots(col = "p_ii")
-```
 
 ## Discussion
 
-Is this an effective model? What were some of the more interesting variables?  How much of the variation in prices could you predict? Describe the more important features? Describe the error in your predictions?  According to your maps, could you account the spatial variation in prices?  Where did the model predict particularly well? Poorly? Why do you think this might be?
+As mentioned above in the methods section, OLS regression entails several assumptions, among these 1) a linear relationship between the dependent variable and its predictors, 2) no multicollinearity, and 3) no spatial dependence in the data. Frankly, it is evident that our model violates several of these assumptions. Most obviously,
+
+Is this an effective model? What were some of the more interesting variables? How much of the variation in prices could you predict? Describe the more important features? Describe the error in your predictions? According to your maps, could you account the spatial variation in prices? Where did the model predict particularly well? Poorly? Why do you think this might be?
 
 ### Accuracy and Generalizability
+This model is neither accurate nor generalizable. Although there is not a specific threshold for accuracy, per se, the MAPE of more than 30% indicates that this model does not predict home prices in any particular neighborhood very well. Furthermore, given our analysis of the divergent accuracy across neighborhoods of different racial or economic characteristics, we find that this model does not generalize well, either. 
 
 ## Conclusion
-
-Would you recommend your model to Zillow? Why or why not? How might you improve this model?
-
+In sum, we would not recommend this model to Zillow. Even discounting the issue of spatial dependence, it predicts poorly. Improving it would require first and foremost a more parsimonious choice of predictor variables. Additionally, it would be essential to incorporate the spatial dependence of variables through the use of something like spatial lag regression, spatial error regression, or geographically-weighted regression. 
