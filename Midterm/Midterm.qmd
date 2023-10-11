@@ -21,7 +21,7 @@ execute:
 
 ## Summary
 
-Below, we implement an Ordinary Least Squares (OLS) regression to predict sale prices for homes in Philadelphia. We create a dataset of features taken from Zillow data and several public data sources and attempt to narrow them down to a list of predictors that will minimize the mean absolute percent error (MAPE) of predictions. We find that our model 1) has limited accuracy, with a MAPE of more than 30%, and 2) does not generalize well to lower income or non-white neighborhoods. We attribute these shortcomings to poor selection of predictor variables and the inadequacy of OLS regression when dealing with data of a fundamentally spatial nature. To improve our model, we recommend a more parsimonious selection of variables and the consideration of the spatial nature of the data through the use of a method such as geographically-weighted regression.
+Below, we implement an Ordinary Least Squares (OLS) regression to predict sale prices for homes in Philadelphia. We create a dataset of features taken from Zillow data and several public data sources and attempt to narrow them down to a list of predictors that will minimize the mean absolute percent error (MAPE) of predictions. We find that our model 1) has limited accuracy, with a MAPE of more than 35%, and 2) does not generalize well to lower income or non-white neighborhoods. We attribute these shortcomings to poor selection and cleaning of predictor variables, and the inadequacy of OLS regression when dealing with data of a fundamentally spatial nature. To improve our model, we recommend a more parsimonious selection and transformation of variables, and the consideration of the spatial nature of the data through the use of a method such as geographically-weighted regression.
 
 ## Introduction
 
@@ -39,7 +39,7 @@ Another possible challenge when it comes to constructing a hone price estimator 
 
 Keeping these potential pitfalls in mind, our overall modeling strategy was as follows. We first gathered open-source data about Philadelphia to examine and create variables of Philadelphia houses and neighborhoods to assess whethere it made sense to include them in our model. We then input a selection of predictors into an ordinary least squares (OLS) regression, specifically an OLS step-wise regression, to narrow down and determine the combination of the most informative predictors. After assessing our model fit by looking at mean absolute error (MAE) and mean absolute percentage error (MAPE), we revised our selection of predictors and repeated the process until we were happy with our model.
 
-Our newly improved model uses 21 independent variables to predict housing prices in Philadelphia and is able to do so with a mean MAE of \$68,687.82 and mean MAPE of 36.74% (with 100-fold cross-validation; see Table 7). Notable predictors in our OLS regression are number of bathrooms, percent of population that is white (in the census tract that the house is part of), and the rating of a house's interior condition (see table 5). We observed clustering in home price predictions with a Moran's *I* of 0.615 (p \< 0.001) meaning our model errors exhibit spatial autocorrelation (see figure 10). We found that our model predicts with higher errors for majority non-White neighborhoods and low-income neighborhoods (see tables 8 and 9).
+Our newly improved model uses 21 independent variables to predict housing prices in Philadelphia and is able to do so with a mean MAE of \$68,687.82 and mean MAPE of 36.74%. Notable predictors in our OLS regression are number of bathrooms, percent of population that is white (in the census tract that the house is part of), and the rating of a house's interior condition. We observed clustering in home price predictions with a Moran's *I* of 0.615 (p \< 0.001) meaning our model errors exhibit spatial autocorrelation. We found that our model predicts with higher errors for majority non-White neighborhoods and low-income neighborhoods.
 
 ```{r setup}
 library(tidyverse)
@@ -64,6 +64,7 @@ library(missForest)
 library(psych)
 library(kableExtra)
 library(gridExtra)
+library(ggpubr)
 
 tmap_mode('plot')
 options(tigris_use_cache = TRUE, scipen = 999)
@@ -72,7 +73,7 @@ ggthemr('flat')
 
 pal_full <- c("#34495e", "#3498db", "#2ecc71", "#f1c40f", "#e74c3c", "#9b59b6", "#1abc9c", "#f39c12", "#d35400")
 plt_pal <- c("#3498db", "#2ecc71", "#f1c40f")
-corr_mat_pal <- c("#34495e", "white", "#e74c3c")
+corr_mat_pal <- c("#2ecc71", "white", "#e74c3c")
 bi_pal <- c("#9b59b6", "#d6bddd")
 
 mypalette1 <- colorRampPalette(c("#bbf0e1","#025e44"))(5)
@@ -350,12 +351,6 @@ reg_data_geom <- data_to_dummy %>%
   dplyr::select(musaID,geometry)
 ```
 
-```{r}
-# ggplot(data) +
-#   geom_histogram(aes(x = sale_price)) +
-#   scale_x_log10()
-```
-
 #### Exploratory Analysis
 
 We first limited studentData to rows with realistic values for sale price (sale_price \> 1). After combining all data described above (matching by geographical location), we explored the relationship between variables and sale price. Scatterplots (like those of Figure 1) plot sale price as a function of interesting predictors. Plots B and D show that total livable area (measured in square ft) and the spatial lag of home price (using 15 nearest neighbors) have strong positive relationships with sale price. As expected, as median household income (measured at the census tract level) increases, so does the sale price of a home, though this positive relationship is not as strong as that with the previously mentioned features. Another interesting relationship we see in figure 1 is that of distance to nearest commercial center and sale price. Though one might expect a strong positive correlation between these two variables, the data shows a rather weak relationship between the two.
@@ -389,17 +384,34 @@ data %>%
   theme_minimal()
 ```
 
+In general, this is not ideal, as one of the basic assumptions of OLS regression (see below) is a linear relationship between the dependent variable and the predictors. Under the time constraints, however, we have not taken this into account, which is reflected in the low accuracy of our model.
+
+Similarly, we note that our dependent variable, sale price, is not normally distributed. Ideally, we would apply a log transformation to normalize it and improve model performance, but ran out of time before successfully implementing this transformation. This would be a path for improvement in a future iteration of this model.
+```{r untreated sale price dist}
+untreated <- ggplot(data) +
+  geom_histogram(aes(x = sale_price) )+
+  labs(title = "Untreated Sale Price",
+       x = "Price",
+       y = "Count")
+
+treated <- ggplot(reg_data) +
+  geom_histogram(aes(x = sale_price)) +
+  scale_x_log10() +
+  labs(title = "Log-Transformed Sale Price",
+       x = "Price",
+       y = "Count")
+
+ggarrange(untreated, treated, ncol = 2)
+```
+
 #### Feature Engineering
 
 We observed some impossible or missing values in our data, namely values of zero or one in total_area and total_livable_area, missing values for spatial lag in price, zero for number of rooms, bedrooms and bathrooms, and zero for year_built. Though we knew why some of these variables were missing (e.g. spatial lag of price was missing for those that had a house in the challenge set as one of the 15 nearest neighbors since we set sale price for those houses as missing for this calculation), we had to get creative for the other cases. The different solutions we implemented were replacing impossible values as NA and imputing more reasonable values (in the case of total_area and total_livable_area) and replacing zeros with the mean value of that variable (for year_built, number of rooms, number of bathrooms, and number of bedrooms).
 
-For categorical variables such as building type price class, quality grade, and neighborhood price class, we created dummy variables. Dummy variables help us break down each category of a categorical variable into its own feature, usually made up of ones and zeros indicating whether that row has that feature or not, respectively.
-
-We have provided summary and descriptive statistics of the final predictors we decided to include in our model (tables 1-4).
+For categorical variables such as building type price class, quality grade, and neighborhood price class, we created dummy variables. Dummy variables help us break down each category of a categorical variable into its own feature, usually made up of ones and zeros indicating whether that row has that feature or not, respectively. Below, we have provided summary and descriptive statistics of the final predictors we decided to  include in our model.
 
 ```{r summary stats}
-#| include: false
-#| evaluate: false
+
 
 # # reorder numeric data
 sum_stat_data <- reg_data %>% st_drop_geometry() %>% 
@@ -481,62 +493,48 @@ sum_stat_table %>%
 ```
 
 ```{r not now}
-#| evaluate: false
-#| include: false
 
-# sum_stat_data %>% 
-#   dplyr::select(hood_price_class) %>% 
-#   mutate(hood_price_class = 
-#            factor(hood_price_class, 
-#            levels = c("least expensive","less expensive","expensive","more expensive","most expensive"))) %>% 
-#   table() %>% 
-#   as.data.frame() %>% 
-#   mutate(Description = c("Houses in a neighborhood with average sale price of under 100,000 USD",
-#                          "Houses in a neighborhood with average sale price between 100,000.01 and 250,000 USD",
-#                          "Houses in a neighborhood with average sale price between 240,000.01 and 500,000 USD",
-#                          "Houses in a neighborhood with average sale price between 500,000.01 and 750,000 USD",
-#                          "Houses in a neighborhood with average sale price of over 750,000.01 USD")) %>% 
-#   kbl(caption = "Table 3: Descriptive statistics of sales price classes of nieghborhoods", 
-#       align = rep("c", 8), col.names = c("Neighborhood", "Row count", "Description")) %>%
-#   kable_classic(full_width = F, html_font = "Cambria")
-# 
-# sum_stat_data %>% 
-#   dplyr::select(quality_grade) %>% 
-#   mutate(quality_grade = 
-#            factor(quality_grade, 
-#            levels = c("Lowest","Mid","High"))) %>% 
-#   table() %>% as.data.frame() %>% 
-#   mutate(Description = c("Houses with a quality grade of \"X\"",
-#                          "Houses with a quality grade of \"X-\", \"A+\", \"A\", or \"A-\"",
-#                          "Houses with a quality grade of \"C\", \"C-\", \"D+\", \"D\", \"D-\", \"E+\", \"E\", or \"E-\"")) %>% 
-#   kbl(caption = "Table 4: Descriptive statistics of quality grade classes", 
-#       align = rep("c", 8), col.names = c("Quality Grade", "Row count", "Description")) %>%
-#   kable_classic(full_width = F, html_font = "Cambria")
 
+data %>%
+  st_drop_geometry() %>%
+  dplyr::select(hood_price_class) %>%
+  mutate(hood_price_class =
+           factor(hood_price_class,
+           levels = c("least expensive","less expensive","expensive","more expensive","most expensive"))) %>%
+  group_by(hood_price_class) %>%
+  summarize(count = n()) %>%
+  mutate(Description = c("Houses in a neighborhood with average sale price of under 100,000 USD",
+                         "Houses in a neighborhood with average sale price between 100,000.01 and 250,000 USD",
+                         "Houses in a neighborhood with average sale price between 240,000.01 and 500,000 USD",
+                         "Houses in a neighborhood with average sale price between 500,000.01 and 750,000 USD",
+                         "Houses in a neighborhood with average sale price of over 750,000.01 USD")) %>%
+  kbl(caption = "Table 3: Descriptive statistics of sales price classes of nieghborhoods",
+      align = rep("c", 8), col.names = c("Neighborhood", "Row count", "Description")) %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+data %>%
+  st_drop_geometry() %>%
+  dplyr::select(quality_grade)  %>%
+  mutate(quality_grade =
+           factor(quality_grade,
+           levels = c("Lowest","Mid","High"))) %>%
+  group_by(quality_grade) %>%
+  summarize(count = n()) %>%
+  mutate(Description = c("Houses with a quality grade of \"X\"",
+                         "Houses with a quality grade of \"X-\", \"A+\", \"A\", or \"A-\"",
+                         "Houses with a quality grade of \"C\", \"C-\", \"D+\", \"D\", \"D-\", \"E+\", \"E\", or \"E-\"")) %>%
+  kbl(caption = "Table 4: Descriptive statistics of quality grade classes",
+      align = rep("c", 8), col.names = c("Quality Grade", "Row count", "Description")) %>%
+  kable_classic(full_width = F, html_font = "Cambria")
 ```
 
 #### Checking for Collinearity
 
 When using numerous predictors in a model, it is important to inspect for collinearity, or how similar or correlated predictors are to each other. We explored these relationships between features by examining a correlation matrix. As shown in Figure 2, some variables such as number of rooms, number of bedrooms and number of bathrooms have strong collinearity. There is also a high correlation between median household income, spatial lag in price, and percent of population that is white. Taking note of these patterns, we kept our subset of predictors as our next step accounted for collinearity.
-
 ```{r corr matrix of num vars}
-# numeric_vars <- sum_stat_data %>% 
-#   dplyr::select(-c(building_type_price_class,quality_grade,hood_price_class)) %>% 
-#   mutate_if(is.factor,as.numeric) %>% 
-#   cbind(data_to_dummy %>% st_drop_geometry() %>% dplyr::select(sale_price))
 
 numeric_vars <- reg_data %>% 
   select(where(is.numeric))
-
-# ggcorrplot(
-#   round(cor(numeric_vars), 1), 
-#   p.mat = cor_pmat(numeric_vars),
-#   # ggtheme = ggplot2::theme_gray,
-#   colors = corr_mat_pal,
-#   type="lower",
-#   insig = "blank") +  
-#   labs(title = "Correlation across numeric variables",
-#        caption = "Figure 2") 
 
 corr <- round(cor(numeric_vars), 1)
 p.mat <- cor_pmat(numeric_vars)
@@ -554,7 +552,6 @@ ggcorrplot(corr,
 #### Spatial Process
 
 In building this model, it is essential to account for the spatial process of features. It is clear, for example, that prices are stratefied geographically and are higher than some neighborhoods than others. We account for this geographic feature by using neighborhoods as features in our dataset via dummy variables.
-
 ```{r build type map}
 buildtype_data <- data_to_dummy %>% 
   mutate(buildtype = factor(building_type_price_class, 
@@ -585,6 +582,8 @@ tm_layout(frame = FALSE,
           ) +
   tm_credits("Philadelphia, PA", fontface = "italic", align = "right") +
   tm_credits("Figure 3", fontface = "bold", align = "right")
+
+avg_price_hood_map
 ```
 
 Much of this spatial process can be explained by proximity to amenities (as the adage in real estate goes, "location, location, location"). To this end, we incorporate proximity to amenities by calculating the distance of each home to the nearest commercial corridor and incorporating this into our dataset.
@@ -721,9 +720,15 @@ When running an OLS regression, it is crucial to ensure that the following five 
 
 Yet, specifically in the context of predictive modeling, we have greater leeway.
 
-Finally, it is essential to note that an OLS model does not account for spatial processes in the data. 
+Finally, it is essential to recall that an OLS model does not account for spatial processes in the data. As a result, it is inevitable that we will see spatial autocorrelation not only in our dataset but in the residuals of our regression as well.
 
 
+
+## Results
+
+### Regression Results
+
+The results of our regression are underwhelming. Based on cross-fold validation with a k of 100 (i.e., over 100 iterations), we find a mean absolute percent error around 36%. We also note that, based on our single iteration, several of our predictors have p-values over 5%, suggesting that they are not statistically significant and therefore do not contribute to the model. Although the R-squared value is relatively high (0.74), our purpose here is not research, but rather economic prediction, and this is therefore not a strong model.
 ```{r ols model}
 # book's method of doing this
 inTrain <- createDataPartition(
@@ -749,32 +754,7 @@ mae1 <- mean(phl.test$sale_price.AbsError, na.rm = TRUE) # 69203.8
 
 summ_reg.training <- summary(reg.training)
 summ_coeff1 <- as.data.frame(summary(reg.training)$coefficients) # same as summ_coeff
-```
-Lastly, we note that our dependent variable, sale price, is not normally distribued, which is a major obstacle for OLS regression.
-```{r untreated sale price dist}
-ggplot(data) +
-  geom_histogram(aes(x = sale_price) )+
-  labs(title = "Sale Price",
-       x = "Price",
-       y = "Count",
-       caption = "Figure 9")
-```
-To address this, we log-transform sale price, which normalizes the distibution and substantially improves the performance of our model.
-```{r sale price dist}
-# ggplot(reg_data) +
-#   geom_histogram(aes(x = sale_price)) +
-#   labs(title = "Sale Price",
-#        x = "Price",
-#        y = "Count")
-```
 
-## Results
-
-### Regression Results
-
-The results of our regression are underwhelming; with a mean absolute percent error (MAPE) of more than 30%,
-
-```{r polished lm summary}
 footnote1 <- paste0("R-squared: ",round(summ_reg.training$r.squared,3),
                     "; adjusted R-squared: ",round(summ_reg.training$adj.r.squared,3),
                     "; F-statistic: ", round(summ_reg.training$fstatistic[1],3), 
@@ -802,7 +782,6 @@ summ_coeff1 %>%
 
 ```
 
-We note, furthermore, that many of our variables do not have statistically significant relationships with sale price, suggesting that they could be discarded in future iterations of this model. 
 ```{r table MAE/MAPE}
 data.frame(MAE = sprintf('%.2f',round(mae1,3)),
            MAPE = round(mape1,3)) %>% 
@@ -812,8 +791,6 @@ data.frame(MAE = sprintf('%.2f',round(mae1,3)),
   column_spec(1, width = "10em") %>% 
   column_spec(2, width = "10em")
 ```
-
-Using k-fold cross validation with a k of 100 (i.e., 100 iterations), we find that our MAPE converges at roughly 35%.
 
 ```{r CV}
 
@@ -851,10 +828,6 @@ data.frame(MeanMAE = print_model$MAE,
 ```
 
 ```{r mae hist}
-
-mae_hist_dat <- model$resample %>%
-                  mutate(MAE_exp = exp(MAE))
-
 ggplot(data = model$resample) +
   ggplot2::geom_histogram(aes(x = MAE), bins = 12) +
   labs(title = "Distribution of MAE",
@@ -862,13 +835,9 @@ ggplot(data = model$resample) +
        x = "Mean Absolute Error",
        y = "Count",
        caption = "Figure 10")
-
-model_resample <- model_resample %>%
-                      mutate(MAE_trans = exp(MAE))
 ```
 
 Based on a scatterplot of the residuals, we notice that, as the sale price increases, the absolute error increases as well.
-
 ```{r predicted ~ observed}
 phl.test %>%
   dplyr::select(sale_price.Predict, sale_price) %>%
@@ -884,7 +853,6 @@ phl.test %>%
 ```
 
 Spatial error appears to cluster in parts of North and West Philadelphia.
-
 ```{r spatial resids}
 
 spatial_resids <- reg_data %>%
@@ -946,15 +914,7 @@ tm_layout(frame = FALSE,
   tm_credits("Figure 13", fontface = "bold", align = "right")
 ```
 
-```{r resids}
-ggplot(spatial_resids, aes(x = sale_price, y = pct_residuals)) +
-  ggplot2::geom_point() +
-  labs(title = "Percent Residuals as a funciton of Sale Price",
-       x = "Sale Price",
-       y = "Residuals as %",
-       caption = "Figure 14")
-```
-
+Running a global Moran's I test, we find that sale price is spatially autocorrelated, confirming that this affects the quality of our model.
 ```{r morans i}
 # adapted from code chunk: autocorr
 data_nb <- data %>% 
@@ -982,13 +942,9 @@ ggplot(moranMCres) +
        x = "Moran's I",
        y = "Count",
        caption = "Figure 15")
-
 ```
-
+Below, we plot the spatial lag of errors.
 ```{r spatial lag of errors}
-#| evaluate: false
-#| include: false
-
 # this can be made prettier
 spdep::moran.plot(data_nb$sale_price, nb2listw(data_nb$nb),
            xlab = "Sale Price", 
@@ -996,9 +952,9 @@ spdep::moran.plot(data_nb$sale_price, nb2listw(data_nb$nb),
 # add caption that says Figure 16, any way to edit title?
 ```
 
-TO DO: Provide a map of your predicted values for where 'toPredict' is both "MODELLING" and "CHALLENGE"
-
 ```{r toPredict model + chal}
+set.seed(40)
+
 inTrain2 <- createDataPartition(
               y = paste(reg_data$fireplaces, reg_data$number_of_rooms,
                         reg_data$exterior_condition), 
@@ -1040,10 +996,7 @@ ggplot() +
   mapTheme()
 ```
 
-In comparison to the map of observed sale prices (figure 6), we can see in this map of the predicted sale price (including both modelling and challenge data; figure 12) that our model generally predicts prices well, but overpredicts sale price in the northeast region as well as the northwestern tip of Philadelphia.
-
-TO DO: Using the test set predictions, provide a map of mean absolute percentage error (MAPE) by neighborhood. (code chunk reids is close to what we want, but use MAPE instead of resids)
-
+In comparison to the map of observed sale prices, we can see in this map of the predicted sale price (including both modelling and challenge data) that our model generally predicts prices well, but over-predicts sale price in the northeast region as well as the northwestern tip of Philadelphia. Indeed, we note that mean absolute percent error appears to cluster in these neighborhoods, suggesting spatial autocorrelation in our residuals.
 ```{r MAPE by neighborhood}
 # code adapted from resids code chunk + book
 # by "test set" do they mean the new test set with both modelling and challenge data?
@@ -1084,85 +1037,16 @@ tm_layout(frame = FALSE,
   tm_credits("Philadelphia, PA", fontface = "italic", align = "right") +
   tm_credits("Figure 18 ", fontface = "bold", align = "right")
 
-
-# mape_x_hood <- mape_data %>%
-#                   group_by(mapname) %>%
-#                   summarize(avg_mape = mean(sale_price.APE),
-#                             avg_price = mean()) %>%
-#                   arrange(desc(avg_mape)) %>%
-#                   select(avg_mape, mapname) %>%
-#                   st_drop_geometry() %>%
-#                   left_join(., hoods, by = "mapname") %>%
-#                   st_sf()
-# 
-# # redefine qBr to show decimal points
-# qBr_3 <- function(df, variable, rnd) {
-#   if (missing(rnd)) {
-#     as.character(quantile(round(df[[variable]],3),
-#                           c(.01,.2,.4,.6,.8), na.rm=T))
-#   } else if (rnd == FALSE | rnd == F) {
-#     as.character(formatC(quantile(df[[variable]],
-#                                   c(.01,.2,.4,.6,.8), na.rm=T),
-#                          digits = 3))
-#   }
-# }
-# 
-# ggplot() +
-#   # geom_sf(data = hoods, color = "white", fill = "#f0cab9") + 
-#   geom_sf(data = mape_x_hood, aes(fill = q5(avg_mape)), 
-#           show.legend = "point", size = .25) +
-#   scale_fill_manual(values = mypalette1,
-#                     labels=qBr_3(mape_x_hood,"avg_mape"),
-#                     name="MAPE") +
-#   labs(title = "Map of MAPE by Neighborhood",
-#        subtitle="Test Set includes both modelling and challenge data; Philadelphia, PA", 
-#        caption = "Figure 13") +
-#   mapTheme()
-```
-
-```{r autocorr}
-# data_nb <- data %>% 
-#           mutate(nb = st_knn(geometry, k = 5),
-#                  wt = st_weights(nb),
-#                  .before = 1)
-# 
-# 
-# # calculate global moran's i for sale_price
-# global_moran(data_nb$sale_price, data_nb$nb, data_nb$wt)$`I`
-# 
-# # moran monte carlo
-# moranMC = global_moran_perm(data_nb$sale_price, data_nb$nb, data_nb$wt, alternative = "two.sided", 999)
-# moranMC
-# 
-# moranMCres = moranMC$res |>
-#   as.data.frame()
-# 
-# colnames(moranMCres) = "col1"
-# 
-# ggplot(moranMCres) +
-#   geom_histogram(aes(col1), bins = 100) +
-#   geom_vline(xintercept = moranMC$statistic, col = "red") +
-#   labs(title = "Histogram of MoranMCres",
-#        x = "moranMCres",
-#        y = "Frequency",
-#        caption = "Figure xx") +
-#   theme_minimal() +
-#   theme(plot.title = element_text(hjust = 0.5))
-# 
-# 
-# spdep::moran.plot(data_nb$sale_price, nb2listw(data_nb$nb),
-#            xlab = "Sale Price", 
-#            ylab = "Spatial Lag")
 ```
 
 ## Discussion
 
 ### Accuracy
+As discussed above in the results section, the model is not particularly accurate. With a MAPE of around 36%, this would not be a credible tool for predicting home prices in Philadelphia. Much of this is likely due to the inadequacy of the non-spatial regression model, but also is greatly impacted by poor variable selection. Transforming variables to achieve normality and dropping variables with p-values below 5% would likely improve model performance. 
 
 ### Generalizability
 
 In addition to its low accuracy, we find that our model generalizes poorly across diverse neighborhoods. It is evident, for example, that the model performs better in wealthier neighborhoods. Mean percent absolute error decreases as a function of price:
-
 ```{r scatter MAPE price}
 st_drop_geometry(mape_x_hood) %>%
   ggplot(aes(mean.price, mean.MAPE)) +
@@ -1176,8 +1060,7 @@ st_drop_geometry(mape_x_hood) %>%
 # possibly add neighborhood names of extreme outliers
 ```
 
-Indeed, when mean percent error is considered in high income versus low income neighborhoods, we notice a difference of roughly 15%:
-
+Indeed, when mean percent error is considered in high income versus low income neighborhoods, we notice a difference of roughly 23%
 ```{r mape income table}
 st_join(mape_data, split_data) %>% 
   filter(!is.na(incomeContext)) %>% 
@@ -1193,7 +1076,6 @@ st_join(mape_data, split_data) %>%
 ```
 
 Given the strongly spatially autocorrelated nature of income in Philadelphia, this is unsurprising, but nevertheless necessary to account for.
-
 ```{r mape income map}
 income <- tm_shape(na.omit(split_data)) +
   tm_polygons(col = "incomeContext", 
@@ -1218,7 +1100,6 @@ income
 ```
 
 Additionally, we find that the model generalizes poorly across racial lines.
-
 ```{r race table}
 st_join(mape_data, split_data) %>% 
   group_by(raceContext) %>%
@@ -1232,7 +1113,6 @@ st_join(mape_data, split_data) %>%
 ```
 
 And once again, this is unsurprising giving the strong spatial autocorrelation of race in Philadelphia.
-
 ```{r race map}
 race <- tm_shape(na.omit(split_data)) +
   tm_polygons(col = "raceContext", 
@@ -1256,7 +1136,6 @@ race
 ```
 
 In fact, comparing race, income, and average sale price in Philadelphia, one finds that all three appear to be correlated.
-
 ```{r arrange all three}
 tmap_arrange(avg_price_hood_map, income, race, ncol = 2)
 ```
