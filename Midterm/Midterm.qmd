@@ -82,9 +82,15 @@ We gathered data about the shape and outline of the city of Philadelphia and its
 
 We first limited studentData to rows with realistic values for sale price (sale_price > 1). After combining all data described above (matching by geographical location), we explored the relationship between variables and sale price. Scatterplots (like those of Figure xx) that plot sale price as a function of interesting predictors. 
 
+#### Feature Engineering
+
+We observed some impossible or missing values in our data, namely values of zero or one in total_area and total_livable_area, missing values for spatial lag in price, zero for number of rooms, bedrooms and bathrooms, and zero for year_built. Though we knew why some of these variables were missing (e.g. spatial lag of price was missing for those that had a house in the challenge set as one of the 15 nearest neighbors since we set sale price for those houses as missing for this calculation), we had to get creative for the other cases. The different solutions we implemented were (1) replacing impossible values as NA and imputing more reasonable values (in the case of total_area and total_livable_area); (2) replacing zeros with ones for number of rooms, bathrooms, and bedrooms; and (3) replacing zeros for year_built with the mean value of year_built. 
+
+For categorical variables such as building type price class, quality grade, and neighborhood price class, we created dummy variables. Dummy variables help us break down each category of a categorical variable into its own feature, usually made up of ones and zeros indicating whether that row has that feature or not, respectively.
+
 #### Checking for Collinearity
 
-When using numerous predictors in a model, it is important to inspect for collinearity, or how similar or correlated predictors are to each other. We explored these relationships between features by examining a correlation matrix. As shown in Figure xx, some variables such as {var1} and {var2} have strong collinearity. Taking note of these patterns, we still kept our subset of predictors as our next step accounts for collinearity.
+When using numerous predictors in a model, it is important to inspect for collinearity, or how similar or correlated predictors are to each other. We explored these relationships between features by examining a correlation matrix. As shown in Figure 1, some variables such as number of rooms, number of bedrooms and number of bathrooms have strong collinearity. Taking note of these patterns, we still kept our subset of predictors as our next step accounted for collinearity.
 
 
 ```{r data wrangle}
@@ -234,18 +240,18 @@ data <- st_join(data, phl_acs) %>%
 # data <- st_join(data, phl_tree_canopy)
 
 ### spatial lag of sale price-----------------------------------------------
-data <- data %>% 
-          mutate(nb = st_knn(geometry, k = 15),
-                 wt = st_weights(nb),
-                 price_lag = st_lag(sale_price, nb, wt, na_ok = T)) %>%
-          select(-c(nb, wt))
-
 # data <- data %>% 
-#           mutate(sale_price_NA = ifelse(sale_price == 0, NA, sale_price),
-#                  nb = st_knn(geometry, k = 15),
+#           mutate(nb = st_knn(geometry, k = 15),
 #                  wt = st_weights(nb),
-#                  price_lag = st_lag(sale_price_NA, nb, wt, na_ok = T)) %>%
-#           select(-c(nb, wt, sale_price_NA))
+#                  price_lag = st_lag(sale_price, nb, wt, na_ok = T)) %>%
+#           select(-c(nb, wt))
+
+data <- data %>%
+          mutate(sale_price_NA = ifelse(sale_price == 0, NA, sale_price),
+                 nb = st_knn(geometry, k = 15),
+                 wt = st_weights(nb),
+                 price_lag = st_lag(sale_price_NA, nb, wt, na_ok = T)) %>%
+          select(-c(nb, wt, sale_price_NA))
 
 ### proximity to commmercial corridors-----------------------------------------------
 corridors_path <- "https://opendata.arcgis.com/datasets/f43e5f92d34e41249e7a11f269792d11_0.geojson"
@@ -358,26 +364,55 @@ dummied_data <- data_to_dummy %>%
 # impute missing data
 # to do this, have to remove to_predict (no characters are allowed + this has no NAs)
 # convert binary + integer (number of rooms) data into factors before imputing
-dummied_data_toimpute <- dummied_data %>% 
+# there are some rows with 0 or 1 for total_area and total_livable_area. since this is impossible, we're replacing them with NA and imputing
+
+# dummied_data_toimpute <- dummied_data %>% 
+#   st_drop_geometry() %>% 
+#   dplyr::select(-c(geometry,to_predict)) %>% 
+#   mutate(total_area = ifelse(total_area < 2, NA, total_area),
+#          total_livable_area = ifelse(total_livable_area < 2, NA, total_livable_area),
+#          garage_spaces = as.factor(garage_spaces),
+#          number_of_rooms = as.factor(number_of_rooms),
+#          number_of_bathrooms = as.factor(number_of_bathrooms),
+#          number_of_bedrooms = as.factor(number_of_bedrooms),
+#          fireplaces = as.factor(fireplaces),
+#          interior_condition = as.factor(interior_condition),
+#          exterior_condition = as.factor(exterior_condition),
+#          number_stories = as.factor(number_stories))
+
+# method without turning num vars to factors, round to nearest integer where necessary after imputation
+# number of bedrooms, bathrooms, and rooms == 0 need to be replaced with 1
+# year_built == 0 needs to be replaced with average year
+dummied_data_toimpute2 <- dummied_data %>% 
   st_drop_geometry() %>% 
   dplyr::select(-c(geometry,to_predict)) %>% 
-  mutate(garage_spaces = as.factor(garage_spaces),
-         number_of_rooms = as.factor(number_of_rooms),
-         number_of_bathrooms = as.factor(number_of_bathrooms),
-         number_of_bedrooms = as.factor(number_of_bedrooms),
-         fireplaces = as.factor(fireplaces),
-         interior_condition = as.factor(interior_condition),
-         exterior_condition = as.factor(exterior_condition),
-         number_stories = as.factor(number_stories))
+  mutate(total_area = ifelse(total_area < 2, NA, total_area),
+         total_livable_area = ifelse(total_livable_area < 2, NA, total_livable_area))
 
-# imp_data <- missForest(dummied_data_toimpute,ntree = 20)$ximp %>% 
+# imp_data <- missForest(dummied_data_toimpute,ntree = 20)$ximp %>%
+#               cbind(dummied_data %>% dplyr::select(to_predict))
+
+# when rendering, suppressing this chunk for now for sake of time
+# imp_data2 <- missForest(dummied_data_toimpute2,ntree = 20)$ximp %>%
 #               cbind(dummied_data %>% dplyr::select(to_predict))
 
 # saving imp_data so I don't have to run it again
-# write_csv(imp_data, "imputed_data.csv")
-# write_csv(imp_data, "imputed_data_wfactors.csv")
+# write_csv(imp_data, "imputed_data_wfactors_231010.csv")
+# write_csv(imp_data2, "imputed_data_231010.csv")
 
-imp_data <- read_csv("imputed_data_wfactors.csv")
+# imp_data <- read_csv("imputed_data_wfactors.csv")
+imp_data2 <- read_csv("imputed_data_231010.csv")
+
+# for imp_data2, round to nearest whole number for garage_spaces, number_of_rooms, number_of_bathrooms, fireplaces, interior_condition,number_stories,number_of_bedrooms,exterior_condition
+imp_data <- imp_data2 %>% 
+  mutate(garage_spaces = round(garage_spaces),
+         number_of_rooms = round(number_of_rooms),
+         number_of_bathrooms = round(number_of_bathrooms),
+         fireplaces = round(fireplaces),
+         interior_condition = round(interior_condition),
+         number_stories = round(number_stories),
+         number_of_bedrooms = round(number_of_bedrooms),
+         exterior_condition = round(exterior_condition))
 
 reg_data <- imp_data %>%
               filter(to_predict == "MODELLING") %>% # only keep modelling data
@@ -392,15 +427,16 @@ reg_data_geom <- data_to_dummy %>%
 
 
 ```{r summary stats}
-# reorder data_mod
+# reorder numeric data
 sum_stat_data <- data_to_dummy %>% 
   st_drop_geometry() %>% 
   dplyr::select(-c(garage_spaces, medHHInc, number_of_rooms, number_of_bathrooms, depth, off_street_open, fireplaces, musaID,
-                   interior_condition, number_stories, number_of_bedrooms, exterior_condition, total_area, sale_price)) %>% 
-  cbind(imp_data %>% dplyr::select(garage_spaces, med_hh_inc, number_of_rooms, number_of_bathrooms, depth,
+                   interior_condition, number_stories, number_of_bedrooms, exterior_condition, total_area, sale_price, 
+                   price_lag, total_livable_area)) %>% 
+  cbind(imp_data %>% dplyr::select(garage_spaces, med_hh_inc, number_of_rooms, number_of_bathrooms, depth,price_lag, 
                                    off_street_open, fireplaces,interior_condition, number_stories,number_of_bedrooms,
-                                   exterior_condition, total_area)) %>% 
-  dplyr::select(
+                                   exterior_condition, total_area,total_livable_area)) %>% 
+  dplyr::select( # select in the desired order
     total_area, total_livable_area, number_of_rooms, number_of_bathrooms, number_of_bedrooms, number_stories, garage_spaces, 
     fireplaces, depth, interior_condition, exterior_condition, year_built, quality_grade, building_type_price_class,
     off_street_open, # internal characteristics
@@ -511,8 +547,8 @@ ggcorrplot(
 # below is just a template of the code
 st_drop_geometry(reg_data) %>%
   dplyr::select(sale_price,dist_to_commerce,price_lag,total_livable_area,med_hh_inc) %>%
-  rename(`A. Distance to Commercial Center` = dist_to_commerce,
-         `B. Total Livable Area` = total_livable_area,
+  rename(`A. Distance to Commercial Center (ft)` = dist_to_commerce,
+         `B. Total Livable Area (sq ft)` = total_livable_area,
          `C. Median Household Income ($)` = med_hh_inc,
          `D. Spatial Lag of Home Sale Price` = price_lag) %>%
   gather(Variable, Value, -sale_price) %>%
@@ -523,7 +559,7 @@ st_drop_geometry(reg_data) %>%
   labs(title = "Price as a function of 4 variables of interest",
        y = "Home Sale Price", x = "",
        caption = "Figure 2") +
-  plotTheme()
+  theme_minimal()
 ```
 
 
@@ -542,7 +578,7 @@ imp_data_geom <- cbind(imp_data, data_to_dummy %>%
 ggplot() +
   geom_sf(data = hoods, color = "white", fill = "#f0cab9") + 
   geom_sf(data = imp_data_geom, aes(colour = q5(dist_to_commerce)), 
-          show.legend = "point", size = .75) +
+          show.legend = "point", size = .25) +
   scale_colour_manual(values = mypalette1,
                       labels=qBr(imp_data_geom,"dist_to_commerce"),
                       name="Distance to Commercial\nCenter (ft)") +
@@ -562,7 +598,7 @@ buildtype_data <- data_to_dummy %>%
 ggplot() +
   geom_sf(data = hoods, color = "white", fill = "#f0cab9") + 
   geom_sf(data = buildtype_data, aes(colour = buildtype), 
-          show.legend = "point", size = .75) +
+          show.legend = "point", size = .25) +
   scale_colour_manual(values = mypalette1,
                       name = "Price Class of\nHouse Type") +
   labs(title = "Price Class of House Type",
@@ -577,7 +613,7 @@ ggplot() +
 ggplot() +
   geom_sf(data = hoods, color = "white", fill = "#f0cab9") + 
   geom_sf(data = imp_data_geom, aes(colour = q5(num_rooms)), 
-          show.legend = "point", size = .75) +
+          show.legend = "point", size = .25) +
   scale_colour_manual(values = mypalette1,
                       labels=qBr(imp_data_geom,"num_rooms"),
                       name="Number of Rooms") +
@@ -602,7 +638,7 @@ ppsqft <- reg_data %>% dplyr::select(sale_price,total_area) %>%
 ggplot() +
   geom_sf(data = hoods, color = "white") + 
   geom_sf(data = ppsqft, aes(colour = q5(ppsqft_m)), 
-          show.legend = "point", size = .75) +
+          show.legend = "point", size = .25) +
   scale_colour_manual(values = mypalette2,
                       labels=qBr(ppsqft,"ppsqft_m"),
                       name=bquote((USD/ft^2))) +
@@ -717,11 +753,11 @@ data.frame(MAE = sprintf('%.2f',round(mae1,3)),
 
 ```{r CV}
 customSummary <- function(data, lev = NULL, model = NULL) {
-  mpe <- mean((data$obs - data$pred) / data$obs) * 100
+  mape <- mean((abs(data$obs - data$pred)) / data$obs) * 100
   mae <- mean(abs(data$obs - data$pred))
   rmse <- sqrt(mean((data$obs - data$pred)^2))
   rsq <- cor(data$obs, data$pred)^2
-  out <- c(MAE = mae, RMSE = rmse, Rsquared = rsq, MPE = mpe)
+  out <- c(MAE = mae, RMSE = rmse, Rsquared = rsq, MAPE = mape)
   out
 }
 
@@ -789,7 +825,7 @@ phl.test %>%
        subtitle="Light teal line represents a perfect prediction; Teal line represents prediction",
        caption = "Figure 8",
        x = "Observed Sale Price", y = "Predicted Sale Price") +
-  plotTheme()
+  theme_minimal()
 ```
 
 
@@ -807,7 +843,7 @@ resids_data <- cbind(reg.training$model,
 ggplot() +
   geom_sf(data = hoods, color = "white", fill = "#f0cab9") + 
   geom_sf(data = resids_data, aes(colour = q5(resids)), 
-          show.legend = "point", size = .75) +
+          show.legend = "point", size = .25) +
   scale_colour_manual(values = mypalette1,
                       labels=qBr(resids_data,"resids"),
                       name="Residuals") +
@@ -894,7 +930,7 @@ summ_coeff2 <- as.data.frame(summary(reg.training2)$coefficients)
 ggplot() +
   geom_sf(data = hoods, color = "white", fill = "#f0cab9") + 
   geom_sf(data = phl.test2, aes(colour = q5(sale_price.Predict)), 
-          show.legend = "point", size = .75) +
+          show.legend = "point", size = .25) +
   scale_colour_manual(values = mypalette1,
                       labels=qBr(phl.test2,"sale_price.Predict"),
                       name="Predicted Sale Price") +
@@ -904,6 +940,7 @@ ggplot() +
   mapTheme()
 ```
 
+In comparison to the map of observed sale prices (figure 6), we can see in this map of the predicted sale price (including both modelling and challenge data; figure 12) that our model generally predicts prices well, but overpredicts sale price in the northeast region as well as the northwestern tip of Philadelphia. 
 
 TO DO: Using the test set predictions, provide a map of mean absolute percentage error (MAPE) by neighborhood. (code chunk reids is close to what we want, but use MAPE instead of resids)
 ```{r MAPE by neighborhood}
@@ -962,7 +999,7 @@ mape_x_hood %>%
 # ggplot() +
 #   # geom_sf(data = hoods, color = "white", fill = "#f0cab9") + 
 #   geom_sf(data = mape_x_hood, aes(fill = q5(avg_mape)), 
-#           show.legend = "point", size = .75) +
+#           show.legend = "point", size = .25) +
 #   scale_fill_manual(values = mypalette1,
 #                     labels=qBr_3(mape_x_hood,"avg_mape"),
 #                     name="MAPE") +
