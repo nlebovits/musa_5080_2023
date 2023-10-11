@@ -10,7 +10,6 @@ format:
     theme: flatly
     code-fold: true
     code-summary: "Show the code"
-bibliography: references.bib
 editor: source
 execute:
   warning: false
