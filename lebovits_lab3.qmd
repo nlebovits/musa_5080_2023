@@ -1,0 +1,143 @@
+---
+title: "Geospatial Risk Prediction: Illegal Dumping"
+subtitle: "MUSA 508, Lab #3"
+author: "Nissim Lebovits"
+date: today
+format: 
+  html:
+    embed-resources: true
+    toc: true
+    theme: flatly
+    code-fold: true
+    code-summary: "Show the code"
+editor: source
+execute:
+  warning: false
+  error: false
+  messages: false
+  echo: true
+  cache: false
+---
+
+## Summary
+```{r setup, set.seed(333)}
+
+library(tidyverse)
+library(sf)
+library(rphl)
+library(tidycensus)
+library(sfdep)
+library(tmap)
+
+source("themes.R")
+
+knitr::opts_chunk$set(cache = T)
+options(tigris_use_cache = TRUE, scipen = 999)
+
+tmap_options(basemaps = "Esri.WorldGrayCanvas") #set global tmap basemap
+
+crs <- "epsg:2272"
+```
+
+```{r pull 'n wrangle}
+
+### PHL bounds and grid----------------------------------------
+phl_path <- "https://opendata.arcgis.com/datasets/405ec3da942d4e20869d4e1449a2be48_0.geojson"
+phl <- st_read(phl_path, quiet = TRUE) %>%
+          st_transform(crs = crs)
+
+phl_grid <- st_make_grid(phl, crs = crs, cellsize = 500, square = FALSE) %>% 
+                st_as_sf()%>%
+                mutate(grid_id = 1:n())
+phl_grid <- phl_grid[phl, ]
+
+### illegal dumping----------------------------------------
+base_url = "https://phl.carto.com/api/v2/sql"
+
+three_years_ago = (lubridate::ymd(Sys.Date()) - lubridate::years(3))
+one_year_ago = (lubridate::ymd(Sys.Date()) - lubridate::years(1))
+
+query <- sprintf("
+                  SELECT *
+                  FROM public_cases_fc
+                  WHERE requested_datetime >= '%s' AND requested_datetime < '%s'
+                 ", three_years_ago, one_year_ago)
+  
+complaints = st_as_sf(get_carto(query,
+                              format = 'csv',
+                              base_url = base_url,
+                              stringsAsFactors = FALSE) |>
+                      filter(service_name == "Illegal Dumping",
+                             !is.na(lat),
+                             !is.na(lon)),
+                      coords = c("lon", "lat"),
+                      crs = st_crs('EPSG:4326')) |>
+                      mutate(requested_datetime = as.Date(requested_datetime),
+                             closed_datetime = as.Date(closed_datetime)) |>
+                      st_transform(crs = st_crs("EPSG:2272")) # will need these to be projected for KDE later
+
+
+complaints$closed_datetime[complaints$closed_datetime == ""] = NA
+
+complaints = complaints |>
+                              mutate(response_time_days = case_when(
+                                                                is.na(closed_datetime) ~ as.numeric(difftime(Sys.Date(), requested_datetime, units = "days")),
+                                                                TRUE ~ as.numeric(difftime(closed_datetime, requested_datetime, units = "days"))
+                                                                  ),
+                                     count_complaints = 1
+                                                                         )
+complaints_sample <- slice_sample(complaints, prop = .05)
+
+# complaints to grid
+dumping_net <- st_join(phl_grid, complaints) %>%
+                  group_by(grid_id) %>%
+                  summarize(count_complaints = sum(count_complaints),
+                            count_complaints = ifelse(is.na(count_complaints), 0, count_complaints))
+
+```
+
+## Introduction
+Illegal dumping is a major issue in Philadelphia. Especially in low-income, minority neighborhoods, illegal dumping has a significant impact on quality of life, property values, safety, and public health. For years, the City has failed to address the issue. This is likely due to a combination of factors such as bureaucratic ineptitude, lack of resources, the COVID-19 pandemic, and the sheer scale of the problem (there are, as of this writing, more than 1,600 open cases across the city, but only one detective assigned to solve them). In the case of illegal dumping, *selection bias* (when inaccurate sampling negatively impacts the quality of data) are likely a major issue. Residents of wealthier neighborhoods are more likely to report illegal dumping for a variety of reasons, such as more trust in City services and a higher expectation that something will actually be done about the problem. Residents of poorer, majority-minority neighborhoods are less inclined to report illegal dumping cases in part because they feel that nothing will be done about the problem anyway. As a result, there is likely under-reporting of illegal dumping in the neighborhoods it most impacts.
+
+```{r map dumping}
+tmap_mode('view')
+
+tm_shape(complaints_sample) +
+  tm_dots(clustering = TRUE)
+```
+
+In order to more successfully intervene *proactively* to mitigate illegal dumping, it is useful to have a model that accounts for this selection bias. Below, we use a cross-validated Poisson regression to build a model that attempts to do exactly that. By incorporating associated risk factors (in this case, vacant properties, abandoned cars, street lights out, building permits, income, and race), we seek to construct a model that more can more accurately predict future occurrences of illegal dumping while mitigating the influence of selection bias.
+
+## Methods
+
+### Data Sources & Cleaning
+
+
+A note on data: data are drawn from 2020 to 2022, the peak years of the COVID-19 pandemic. As a result, they are likely anomalous in many ways, such as the fact that the Kenney administration cut the sanitation department's budget.
+
+#### The Fishnet Grid
+
+```{r complaints net}
+tmap_mode('plot')
+
+tm_shape(dumping_net) +
+  tm_polygons(col = "count_complaints", border.alpha = 0, style = "jenks", palette = "viridis")
+```
+```{r test}
+tm <- tm_shape(phl) +
+  tm_borders()
+
+tmap_theme(tm, "Test")
+```
+
+### Poisson Regression
+
+## Results
+
+## Discussion
+
+### Accuracy
+
+### Generalizability
+
+## Conclusion
