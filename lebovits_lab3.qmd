@@ -10,6 +10,7 @@ format:
     theme: flatly
     code-fold: true
     code-summary: "Show the code"
+    number-sections: true
 editor: source
 execute:
   warning: false
@@ -28,18 +29,50 @@ library(rphl)
 library(tidycensus)
 library(sfdep)
 library(tmap)
+library(ggpubr)
+library(ggthemr)
 
 source("themes.R")
 
 knitr::opts_chunk$set(cache = T)
 options(tigris_use_cache = TRUE, scipen = 999)
 
+ggthemr('flat')
+
 tmap_options(basemaps = "Esri.WorldGrayCanvas") #set global tmap basemap
 
 crs <- "epsg:2272"
+
+#### DEFINE FUNCTIONS
+
+### aggregate data to fishnet grid
+netify <- function(data, col_name){
+  netted_data <- st_join(phl_grid, data) %>%
+                  group_by(grid_id) %>%
+                  summarize(
+                    !!col_name := sum(!!sym(col_name)),  # Use !! and sym() for evaluation
+                    !!col_name := ifelse(is.na(!!sym(col_name)), 0, !!sym(col_name))
+                  ) %>%
+                  st_drop_geometry()
+}
+### 311 complaints query---------------------------------------------------------
+get_complaints <- function(query, base_url, service_name){
+  complaints <- st_as_sf(get_carto(query,
+                              format = 'csv',
+                              base_url = base_url,
+                              stringsAsFactors = FALSE) |>
+                      dplyr::filter(service_name == service_name,
+                             !is.na(lat),
+                             !is.na(lon)),
+                      coords = c("lon", "lat"),
+                      crs = st_crs('EPSG:4326')) |>
+                      mutate(requested_datetime = as.Date(requested_datetime),
+                             closed_datetime = as.Date(closed_datetime)) |>
+                      st_transform(crs = st_crs("EPSG:2272")) # will need these to be projected for KDE later
+}
 ```
 
-```{r pull 'n wrangle}
+```{r wrangleR}
 
 ### PHL bounds and grid----------------------------------------
 phl_path <- "https://opendata.arcgis.com/datasets/405ec3da942d4e20869d4e1449a2be48_0.geojson"
@@ -63,19 +96,7 @@ query <- sprintf("
                   WHERE requested_datetime >= '%s' AND requested_datetime < '%s'
                  ", three_years_ago, one_year_ago)
   
-complaints = st_as_sf(get_carto(query,
-                              format = 'csv',
-                              base_url = base_url,
-                              stringsAsFactors = FALSE) |>
-                      filter(service_name == "Illegal Dumping",
-                             !is.na(lat),
-                             !is.na(lon)),
-                      coords = c("lon", "lat"),
-                      crs = st_crs('EPSG:4326')) |>
-                      mutate(requested_datetime = as.Date(requested_datetime),
-                             closed_datetime = as.Date(closed_datetime)) |>
-                      st_transform(crs = st_crs("EPSG:2272")) # will need these to be projected for KDE later
-
+complaints <- get_compaints(query, base_url, "Illegal Dumping")
 
 complaints$closed_datetime[complaints$closed_datetime == ""] = NA
 
@@ -84,15 +105,65 @@ complaints = complaints |>
                                                                 is.na(closed_datetime) ~ as.numeric(difftime(Sys.Date(), requested_datetime, units = "days")),
                                                                 TRUE ~ as.numeric(difftime(closed_datetime, requested_datetime, units = "days"))
                                                                   ),
-                                     count_complaints = 1
-                                                                         )
+                                     count_complaints = 1)
+
 complaints_sample <- slice_sample(complaints, prop = .05)
 
-# complaints to grid
+# complaints to grid----------------------------------------
 dumping_net <- st_join(phl_grid, complaints) %>%
                   group_by(grid_id) %>%
                   summarize(count_complaints = sum(count_complaints),
                             count_complaints = ifelse(is.na(count_complaints), 0, count_complaints))
+
+
+### vacant properties ----------------------------------------
+vacant_points_path <- "https://services.arcgis.com/fLeGjb7u4uXqeF9q/arcgis/rest/services/Vacant_Indicators_Points/FeatureServer/0/"
+vacant_points <- get_spatial_layer(vacant_points_path) %>% st_transform(crs = crs) %>% mutate(count_vacant = 1)
+
+vacancy_net <- st_join(phl_grid, vacant_points) %>%
+                  group_by(grid_id) %>%
+                  summarize(count_vacant = sum(count_vacant),
+                            count_vacant = ifelse(is.na(count_vacant), 0, count_vacant)) %>%
+                  st_drop_geometry()
+
+full_net <- left_join(dumping_net, vacancy_net) %>% st_as_sf()
+
+### abandoned cars----------------------------------------
+abandoned_cars <- get_complaints(query, base_url, "Abandoned Vehicle") %>% dplyr::filter(service_name == "Abandoned Vehicle") %>% mutate(cars_count = 1)
+
+cars_net <- netify(abandoned_cars, "cars_count")
+
+full_net <- left_join(full_net, cars_net) %>% st_as_sf()
+
+### street lights out
+
+### building permits
+building_perms_query <- sprintf("
+                  SELECT geocode_x, geocode_y, permitissuedate, typeofwork
+                  FROM permits
+                  WHERE permitissuedate >= '%s' AND permitissuedate < '%s'
+                 ", three_years_ago, one_year_ago)
+
+building_permits <- st_as_sf(get_carto(building_perms_query,
+                              format = 'csv',
+                              base_url = base_url,
+                              stringsAsFactors = FALSE) |>
+                      dplyr::filter(
+                             !is.na(geocode_x),
+                             !is.na(geocode_y)),
+                      coords = c("geocode_x", "geocode_y"),
+                      crs = st_crs('EPSG:4326')) |>
+                      st_transform(crs = st_crs("EPSG:2272")) %>%
+                    mutate(permits_count = 1)
+
+permits_net <- netify(building_permits, "permits_count")
+
+full_net <- left_join(full_net, permits_net) %>% st_as_sf()
+
+
+### income
+
+### race
 
 ```
 
@@ -100,10 +171,28 @@ dumping_net <- st_join(phl_grid, complaints) %>%
 Illegal dumping is a major issue in Philadelphia. Especially in low-income, minority neighborhoods, illegal dumping has a significant impact on quality of life, property values, safety, and public health. For years, the City has failed to address the issue. This is likely due to a combination of factors such as bureaucratic ineptitude, lack of resources, the COVID-19 pandemic, and the sheer scale of the problem (there are, as of this writing, more than 1,600 open cases across the city, but only one detective assigned to solve them). In the case of illegal dumping, *selection bias* (when inaccurate sampling negatively impacts the quality of data) are likely a major issue. Residents of wealthier neighborhoods are more likely to report illegal dumping for a variety of reasons, such as more trust in City services and a higher expectation that something will actually be done about the problem. Residents of poorer, majority-minority neighborhoods are less inclined to report illegal dumping cases in part because they feel that nothing will be done about the problem anyway. As a result, there is likely under-reporting of illegal dumping in the neighborhoods it most impacts.
 
 ```{r map dumping}
-tmap_mode('view')
+#| label: complaints-dot-map
+#| fig-cap: "A map of 5% of dumping complaints, 2020-22"
 
+tmap_mode('plot')
+
+tm <- tm_shape(phl) +
+  tm_borders() +
 tm_shape(complaints_sample) +
   tm_dots(clustering = TRUE)
+
+tmap_theme(tm, "Sample of Complaints\n2020-22")
+```
+
+```{r dumping hist}
+n_bins <- as.integer(sqrt(nrow(phl_grid)))
+
+ggplot(full_net) +
+  geom_histogram(aes(x = count_complaints), bins = n_bins) +
+  labs(title = "Distribution of Illegal Dumping Complaints",
+       subtitle = "per Fishnet Grid Cell",
+       x = "Complaints",
+       y = "Count")
 ```
 
 In order to more successfully intervene *proactively* to mitigate illegal dumping, it is useful to have a model that accounts for this selection bias. Below, we use a cross-validated Poisson regression to build a model that attempts to do exactly that. By incorporating associated risk factors (in this case, vacant properties, abandoned cars, street lights out, building permits, income, and race), we seek to construct a model that more can more accurately predict future occurrences of illegal dumping while mitigating the influence of selection bias.
@@ -120,17 +209,35 @@ A note on data: data are drawn from 2020 to 2022, the peak years of the COVID-19
 ```{r complaints net}
 tmap_mode('plot')
 
-tm_shape(dumping_net) +
+tm <- tm_shape(dumping_net) +
   tm_polygons(col = "count_complaints", border.alpha = 0, style = "jenks", palette = "viridis")
-```
-```{r test}
-tm <- tm_shape(phl) +
-  tm_borders()
 
-tmap_theme(tm, "Test")
+tmap_theme(tm, "Fishnet Grid of Illegal Dumping Distribution\n2020-22")
 ```
-
 ### Poisson Regression
+
+#### Correlations
+```{r corrplots}
+
+ggscatter(full_net, x = "count_complaints", y = "count_vacant",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   ) + stat_cor(method = "pearson", label.x = 75, label.y = 75)
+
+
+ggscatter(full_net, x = "count_complaints", y = "cars_count",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   ) + stat_cor(method = "pearson", label.x = 75, label.y = 75)
+
+ggscatter(full_net, x = "count_complaints", y = "permits_count",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   ) + stat_cor(method = "pearson", label.x = 75, label.y = 75)
+```
 
 ## Results
 
