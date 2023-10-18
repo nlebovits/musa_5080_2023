@@ -31,6 +31,16 @@ library(sfdep)
 library(tmap)
 library(ggpubr)
 library(ggthemr)
+library(arcpullr)
+library(caret)
+# install.packages("mlr3")
+# install.packages("mlr3spatiotempcv")
+# install.packages("mlr3viz")
+# remotes::install_github("mlr-org/mlr3extralearners@*release")
+library(mlr3)
+library(mlr3spatiotempcv)
+library(mlr3viz)
+library(mlr3extralearners)
 
 source("themes.R")
 
@@ -43,31 +53,28 @@ tmap_options(basemaps = "Esri.WorldGrayCanvas") #set global tmap basemap
 
 crs <- "epsg:2272"
 
+base_url = "https://phl.carto.com/api/v2/sql"
+
+three_years_ago = (lubridate::ymd(Sys.Date()) - lubridate::years(3))
+one_year_ago = (lubridate::ymd(Sys.Date()) - lubridate::years(1))
+
 #### DEFINE FUNCTIONS
 
-### aggregate data to fishnet grid
-netify <- function(data, col_name){
-  netted_data <- st_join(phl_grid, data) %>%
-                  group_by(grid_id) %>%
-                  summarize(
-                    !!col_name := sum(!!sym(col_name)),  # Use !! and sym() for evaluation
-                    !!col_name := ifelse(is.na(!!sym(col_name)), 0, !!sym(col_name))
-                  ) %>%
-                  st_drop_geometry()
-}
+
 ### 311 complaints query---------------------------------------------------------
-get_complaints <- function(query, base_url, service_name){
+get_complaints <- function(query, base_url, service_names_list){
+  
   complaints <- st_as_sf(get_carto(query,
                               format = 'csv',
                               base_url = base_url,
-                              stringsAsFactors = FALSE) |>
-                      dplyr::filter(service_name == service_name,
+                              stringsAsFactors = FALSE) %>%
+                      dplyr::filter(service_name %in% service_names_list,
                              !is.na(lat),
                              !is.na(lon)),
                       coords = c("lon", "lat"),
-                      crs = st_crs('EPSG:4326')) |>
+                      crs = st_crs('EPSG:4326')) %>%
                       mutate(requested_datetime = as.Date(requested_datetime),
-                             closed_datetime = as.Date(closed_datetime)) |>
+                             closed_datetime = as.Date(closed_datetime)) %>%
                       st_transform(crs = st_crs("EPSG:2272")) # will need these to be projected for KDE later
 }
 ```
@@ -85,27 +92,26 @@ phl_grid <- st_make_grid(phl, crs = crs, cellsize = 500, square = FALSE) %>%
 phl_grid <- phl_grid[phl, ]
 
 ### illegal dumping----------------------------------------
-base_url = "https://phl.carto.com/api/v2/sql"
-
-three_years_ago = (lubridate::ymd(Sys.Date()) - lubridate::years(3))
-one_year_ago = (lubridate::ymd(Sys.Date()) - lubridate::years(1))
-
-query <- sprintf("
+dumping_query <- sprintf("
                   SELECT *
                   FROM public_cases_fc
                   WHERE requested_datetime >= '%s' AND requested_datetime < '%s'
                  ", three_years_ago, one_year_ago)
-  
-complaints <- get_compaints(query, base_url, "Illegal Dumping")
 
-complaints$closed_datetime[complaints$closed_datetime == ""] = NA
+dumping_strings <- c("Illegal Dumping")  
+complaints <- get_complaints(dumping_query, base_url, dumping_strings)
 
-complaints = complaints |>
-                              mutate(response_time_days = case_when(
-                                                                is.na(closed_datetime) ~ as.numeric(difftime(Sys.Date(), requested_datetime, units = "days")),
-                                                                TRUE ~ as.numeric(difftime(closed_datetime, requested_datetime, units = "days"))
-                                                                  ),
-                                     count_complaints = 1)
+complaints <- complaints |>
+  mutate(
+    closed_datetime = ifelse(closed_datetime == "", NA, closed_datetime),
+    response_time_days = case_when(
+      is.na(closed_datetime) ~ as.numeric(difftime(Sys.Date(), requested_datetime, units = "days")),
+      TRUE ~ as.numeric(difftime(
+        closed_datetime, requested_datetime, units = "days"
+      ))
+    ),
+    count_complaints = 1
+  )
 
 complaints_sample <- slice_sample(complaints, prop = .05)
 
@@ -129,17 +135,31 @@ vacancy_net <- st_join(phl_grid, vacant_points) %>%
 full_net <- left_join(dumping_net, vacancy_net) %>% st_as_sf()
 
 ### abandoned cars----------------------------------------
-abandoned_cars <- get_complaints(query, base_url, "Abandoned Vehicle") %>% dplyr::filter(service_name == "Abandoned Vehicle") %>% mutate(cars_count = 1)
+abandoned_auto_list <- c("Abandoned Vehicle")
+abandoned_cars <- get_complaints(dumping_query, base_url, abandoned_auto_list) %>% mutate(cars_count = 1)
 
-cars_net <- netify(abandoned_cars, "cars_count")
+cars_net <- st_join(phl_grid, abandoned_cars) %>%
+                  group_by(grid_id) %>%
+                  summarize(cars_count = sum(cars_count),
+                            cars_count = ifelse(is.na(cars_count), 0, cars_count)) %>%
+                  st_drop_geometry()
 
 full_net <- left_join(full_net, cars_net) %>% st_as_sf()
 
 ### street lights out
+lights_list <- c("Alley Light Outage", "Street Light Outage")
+lights_out <- get_complaints(dumping_query, base_url, lights_list) %>% mutate(outage_count = 1)
+
+lights_net <- st_join(phl_grid, lights_out ) %>%
+                  group_by(grid_id) %>%
+                  summarize(outage_count = sum(outage_count),
+                            outage_count = ifelse(is.na(outage_count), 0, outage_count))
+
+full_net <- left_join(full_net, st_drop_geometry(lights_net), by = "grid_id") %>% st_as_sf()
 
 ### building permits
 building_perms_query <- sprintf("
-                  SELECT geocode_x, geocode_y, permitissuedate, typeofwork
+                  SELECT permitissuedate, typeofwork, ST_Y(the_geom) AS lat, ST_X(the_geom) AS lng
                   FROM permits
                   WHERE permitissuedate >= '%s' AND permitissuedate < '%s'
                  ", three_years_ago, one_year_ago)
@@ -149,16 +169,19 @@ building_permits <- st_as_sf(get_carto(building_perms_query,
                               base_url = base_url,
                               stringsAsFactors = FALSE) |>
                       dplyr::filter(
-                             !is.na(geocode_x),
-                             !is.na(geocode_y)),
-                      coords = c("geocode_x", "geocode_y"),
+                             !is.na(lat),
+                             !is.na(lng)),
+                      coords = c("lng", "lat"),
                       crs = st_crs('EPSG:4326')) |>
                       st_transform(crs = st_crs("EPSG:2272")) %>%
                     mutate(permits_count = 1)
 
-permits_net <- netify(building_permits, "permits_count")
+permits_net <- st_join(phl_grid, building_permits) %>%
+                  group_by(grid_id) %>%
+                  summarize(permits_count= sum(permits_count),
+                            permits_count = ifelse(is.na(permits_count), 0, permits_count))
 
-full_net <- left_join(full_net, permits_net) %>% st_as_sf()
+full_net <- left_join(full_net, st_drop_geometry(permits_net), by = "grid_id") %>% st_as_sf()
 
 
 ### income
@@ -166,6 +189,8 @@ full_net <- left_join(full_net, permits_net) %>% st_as_sf()
 ### race
 
 ```
+
+
 
 ## Introduction
 Illegal dumping is a major issue in Philadelphia. Especially in low-income, minority neighborhoods, illegal dumping has a significant impact on quality of life, property values, safety, and public health. For years, the City has failed to address the issue. This is likely due to a combination of factors such as bureaucratic ineptitude, lack of resources, the COVID-19 pandemic, and the sheer scale of the problem (there are, as of this writing, more than 1,600 open cases across the city, but only one detective assigned to solve them). In the case of illegal dumping, *selection bias* (when inaccurate sampling negatively impacts the quality of data) are likely a major issue. Residents of wealthier neighborhoods are more likely to report illegal dumping for a variety of reasons, such as more trust in City services and a higher expectation that something will actually be done about the problem. Residents of poorer, majority-minority neighborhoods are less inclined to report illegal dumping cases in part because they feel that nothing will be done about the problem anyway. As a result, there is likely under-reporting of illegal dumping in the neighborhoods it most impacts.
@@ -185,6 +210,9 @@ tmap_theme(tm, "Sample of Complaints\n2020-22")
 ```
 
 ```{r dumping hist}
+#| label: dumping-hist
+#| fig-cap: "The distribution of illegal dumping across Philadelphia hexagon bins, 2020-22"
+
 n_bins <- as.integer(sqrt(nrow(phl_grid)))
 
 ggplot(full_net) +
@@ -207,6 +235,9 @@ A note on data: data are drawn from 2020 to 2022, the peak years of the COVID-19
 #### The Fishnet Grid
 
 ```{r complaints net}
+#| label: dumping-net
+#| fig-cap: "The distribution of illegal dumping across Philadelphia, 2020-22"
+
 tmap_mode('plot')
 
 tm <- tm_shape(dumping_net) +
@@ -214,6 +245,30 @@ tm <- tm_shape(dumping_net) +
 
 tmap_theme(tm, "Fishnet Grid of Illegal Dumping Distribution\n2020-22")
 ```
+
+Using local moran's I calculations, we can identify hotspots of illegal dumping in Philadelphia.
+```{r lisa}
+dumping_net <- dumping_net %>%
+                  mutate(nb = st_contiguity(x),
+                         wt = st_weights(nb),
+                         dumping_lag = st_lag(count_complaints, nb, wt))
+
+lisa <- dumping_net %>% 
+  mutate(moran = local_moran(count_complaints, nb, wt)) %>% 
+  tidyr::unnest(moran) %>% 
+  mutate(pysal = ifelse(p_folded_sim <= 0.1, as.character(pysal), NA))
+
+palette <- c("High-High" = "#B20016", 
+             "Low-Low" = "#1C4769", 
+             "Low-High" = "#24975E", 
+             "High-Low" = "#EACA97")
+
+tm <- tm_shape(lisa) +
+  tm_polygons(col = "pysal", border.alpha = 0, style = "cat", palette = palette, textNA = "Not a Hotspot")
+
+tmap_theme(tm, "Illegal Dumping Hotspots\n2020-22")
+```
+
 ### Poisson Regression
 
 #### Correlations
@@ -224,7 +279,6 @@ ggscatter(full_net, x = "count_complaints", y = "count_vacant",
    add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
    conf.int = TRUE # Add confidence interval
    ) + stat_cor(method = "pearson", label.x = 75, label.y = 75)
-
 
 ggscatter(full_net, x = "count_complaints", y = "cars_count",
    add = "reg.line",  # Add regressin line
@@ -237,8 +291,125 @@ ggscatter(full_net, x = "count_complaints", y = "permits_count",
    add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
    conf.int = TRUE # Add confidence interval
    ) + stat_cor(method = "pearson", label.x = 75, label.y = 75)
+
+ggscatter(full_net, x = "count_complaints", y = "outage_count",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   ) + stat_cor(method = "pearson", label.x = 75, label.y = 75)
 ```
 
+#### Model
+Found that a regression tree had a lower MAE than a GLM, but oh, well.
+```{r consistent}
+reg_vars <- c("count_vacant",
+              "cars_count",
+              "outage_count",
+              "permits_count",
+              "count_complaints")
+
+reg_data <- full_net %>% 
+              dplyr::select(all_of(reg_vars)) %>% 
+              st_point_on_surface() %>% 
+              mutate(across(where(is.numeric), as.integer))
+
+task <- as_task_regr_st(reg_data, target = "count_complaints")
+
+learner <- mlr3::lrn("regr.glm", 
+                     # family = "poisson", 
+                     feature_types = "integer", 
+                     predict_type = "response")
+
+# reduce verbosity
+lgr::get_logger("mlr3")$set_threshold("warn")
+```
+
+
+```{r regular cv}
+cv_resampling = mlr3::rsmp("repeated_cv", folds = 5, repeats = 100, id = "NSpCV")
+
+# run spatial cross-validation and save it to resample result glm (rr_glm)
+rr_cv_glm = mlr3::resample(task = task,
+                             learner = learner,
+                             resampling = cv_resampling)
+
+score_cv_glm = rr_cv_glm$score(measure = mlr3::msr("regr.mae"))
+score_cv_glm = score_cv_glm[, .(task_id, learner_id, resampling_id, regr.mae)]
+
+q <- as.data.table(rr_cv_glm$prediction(predict_sets = "test"))
+
+q1 <- q %>%
+        mutate(row_ids = as.character(row_ids)) %>%
+        group_by(row_ids) %>%
+        summarize(avg_response = mean(response)) %>%
+        mutate(row_ids = as.integer(row_ids)) %>%
+        st_drop_geometry()
+
+hmm <- cbind(full_net, q1) %>%
+          mutate(abs_error = abs(avg_response - count_complaints)) %>%
+          st_as_sf()
+
+tm <- tm_shape(hmm) +
+  tm_polygons(col = "abs_error", border.alpha = 0, style = "jenks", palette = "viridis")
+
+tmap_theme(tm, "Predicted Illegal Dumping Distribution\nGLM")
+```
+
+```{r spcv}
+spcv_resampling = mlr3::rsmp("repeated_spcv_coords", folds = 5, repeats = 100, id = "SpCV")
+
+# run spatial cross-validation and save it to resample result glm (rr_glm)
+rr_spcv_glm = mlr3::resample(task = task,
+                             learner = learner,
+                             resampling = spcv_resampling)
+
+score_spcv_glm = rr_spcv_glm$score(measure = mlr3::msr("regr.mae"))
+score_spcv_glm = score_spcv_glm[, .(task_id, learner_id, resampling_id, regr.mae)]
+
+spq <- as.data.table(rr_cv_glm$prediction(predict_sets = "test"))
+
+spq1 <- spq %>%
+        mutate(row_ids = as.character(row_ids)) %>%
+        group_by(row_ids) %>%
+        summarize(avg_response = mean(response)) %>%
+        mutate(row_ids = as.integer(row_ids)) %>%
+        st_drop_geometry()
+
+sphmm <- cbind(full_net, spq1) %>%
+          mutate(abs_error = abs(avg_response - count_complaints)) %>%
+          st_as_sf()
+
+tm <- tm_shape(sphmm) +
+  tm_polygons(col = "abs_error", border.alpha = 0, style = "jenks", palette = "viridis")
+
+tmap_theme(tm, "Predicted Illegal Dumping Distribution\nGLM")
+```
+
+```{r comparison}
+design = benchmark_grid(task, learner, c(cv_resampling, spcv_resampling))
+bmr = benchmark(design)
+bmr$aggregate(msr("regr.mae"))[, c(5, 7)]
+```
+Interestingly, we note that, while the regular k-fold cross validation produces normally-distributed errors, the spatial k-fold cross validation produces a bimodal (or possibly trimodal) distribution, suggesting that perhaps different neighborhoods are prone to much higher rates of prediction error.
+```{r prediction hist}
+bins <- as.integer(sqrt(nrow(score_cv_glm)))
+
+cv_mae_hist <- ggplot(score_cv_glm, aes(x = regr.mae)) +
+  geom_histogram(bins = bins) + 
+  labs(title = "Distribution of MAE per Iteration",
+       subtitle = "Regular K-Fold Cross-Validation",
+       x = "MAE",
+       y = "Count")
+
+spcv_mae_hist <- ggplot(score_spcv_glm, aes(x = regr.mae)) +
+  geom_histogram(bins = bins) + 
+  labs(title = "Distribution of MAE per Iteration",
+       subtitle = "Spatial K-Fold Cross-Validation",
+       x = "MAE",
+       y = "Count")
+
+ggarrange(cv_mae_hist, spcv_mae_hist)
+```
 ## Results
 
 ## Discussion
