@@ -36,4 +36,3 @@ st_kde <- function(x){
   terra::rast(kde)
 }
 
-st_kde(pnts)
