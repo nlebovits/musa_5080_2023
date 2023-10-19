@@ -23,6 +23,7 @@ execute:
 ## Summary
 ```{r setup, set.seed(333)}
 
+
 library(tidyverse)
 library(sf)
 library(rphl)
@@ -41,6 +42,8 @@ library(mlr3)
 library(mlr3spatiotempcv)
 library(mlr3viz)
 library(mlr3extralearners)
+library(rsample) 
+library(tidymodels)
 
 source("themes.R")
 
@@ -86,32 +89,47 @@ phl_path <- "https://opendata.arcgis.com/datasets/405ec3da942d4e20869d4e1449a2be
 phl <- st_read(phl_path, quiet = TRUE) %>%
           st_transform(crs = crs)
 
-phl_grid <- st_make_grid(phl, crs = crs, cellsize = 500, square = FALSE) %>% 
-                st_as_sf()%>%
-                mutate(grid_id = 1:n())
+cellsize <- 2500
+
+phl_grid <- st_make_grid(phl, crs = crs, cellsize = cellsize, square = FALSE) %>% 
+                st_as_sf()
+
 phl_grid <- phl_grid[phl, ]
+phl_grid <- phl_grid %>%
+                mutate(grid_id = 1:n())
+
+
+### neighborhoods-----------------------------------------------
+hoods_path <- 'https://raw.githubusercontent.com/azavea/geo-data/master/Neighborhoods_Philadelphia/Neighborhoods_Philadelphia.geojson'
+hoods <- st_read(hoods_path, quiet = T) %>%
+  st_transform(crs = crs) %>%
+  select(mapname)
 
 ### illegal dumping----------------------------------------
-dumping_query <- sprintf("
-                  SELECT *
-                  FROM public_cases_fc
-                  WHERE requested_datetime >= '%s' AND requested_datetime < '%s'
-                 ", three_years_ago, one_year_ago)
+# dumping_query <- sprintf("
+#                   SELECT *
+#                   FROM public_cases_fc
+#                   WHERE requested_datetime >= '%s' AND requested_datetime < '%s'
+#                  ", three_years_ago, one_year_ago)
+# 
+# dumping_strings <- c("Illegal Dumping")  
+# complaints <- get_complaints(dumping_query, base_url, dumping_strings)
+# 
+# complaints <- complaints |>
+#   mutate(
+#     closed_datetime = ifelse(closed_datetime == "", NA, closed_datetime),
+#     response_time_days = case_when(
+#       is.na(closed_datetime) ~ as.numeric(difftime(Sys.Date(), requested_datetime, units = "days")),
+#       TRUE ~ as.numeric(difftime(
+#         closed_datetime, requested_datetime, units = "days"
+#       ))
+#     ),
+#     count_complaints = 1
+#   )
 
-dumping_strings <- c("Illegal Dumping")  
-complaints <- get_complaints(dumping_query, base_url, dumping_strings)
-
-complaints <- complaints |>
-  mutate(
-    closed_datetime = ifelse(closed_datetime == "", NA, closed_datetime),
-    response_time_days = case_when(
-      is.na(closed_datetime) ~ as.numeric(difftime(Sys.Date(), requested_datetime, units = "days")),
-      TRUE ~ as.numeric(difftime(
-        closed_datetime, requested_datetime, units = "days"
-      ))
-    ),
-    count_complaints = 1
-  )
+complaints_path <- "hw3_data/complaints.geojson"
+# saveRDS(complaints, complaints_path)
+complaints <- readRDS(complaints_path)
 
 complaints_sample <- slice_sample(complaints, prop = .05)
 
@@ -123,8 +141,12 @@ dumping_net <- st_join(phl_grid, complaints) %>%
 
 
 ### vacant properties ----------------------------------------
-vacant_points_path <- "https://services.arcgis.com/fLeGjb7u4uXqeF9q/arcgis/rest/services/Vacant_Indicators_Points/FeatureServer/0/"
-vacant_points <- get_spatial_layer(vacant_points_path) %>% st_transform(crs = crs) %>% mutate(count_vacant = 1)
+# vacant_points_path <- "https://services.arcgis.com/fLeGjb7u4uXqeF9q/arcgis/rest/services/Vacant_Indicators_Points/FeatureServer/0/"
+# vacant_points <- get_spatial_layer(vacant_points_path) %>% st_transform(crs = crs) %>% mutate(count_vacant = 1)
+
+vacant_points_path <- "hw3_data/vacant_points.geojson"
+# saveRDS(vacant_points, vacant_points_path)
+vacant_points <- readRDS(vacant_points_path)
 
 vacancy_net <- st_join(phl_grid, vacant_points) %>%
                   group_by(grid_id) %>%
@@ -135,8 +157,12 @@ vacancy_net <- st_join(phl_grid, vacant_points) %>%
 full_net <- left_join(dumping_net, vacancy_net) %>% st_as_sf()
 
 ### abandoned cars----------------------------------------
-abandoned_auto_list <- c("Abandoned Vehicle")
-abandoned_cars <- get_complaints(dumping_query, base_url, abandoned_auto_list) %>% mutate(cars_count = 1)
+# abandoned_auto_list <- c("Abandoned Vehicle")
+# abandoned_cars <- get_complaints(dumping_query, base_url, abandoned_auto_list) %>% mutate(cars_count = 1)
+
+abandoned_cars_path <- "hw3_data/abandoned_cars.geojson"
+# saveRDS(abandoned_cars, abandoned_cars_path)
+abandoned_cars <- readRDS(abandoned_cars_path)
 
 cars_net <- st_join(phl_grid, abandoned_cars) %>%
                   group_by(grid_id) %>%
@@ -146,9 +172,13 @@ cars_net <- st_join(phl_grid, abandoned_cars) %>%
 
 full_net <- left_join(full_net, cars_net) %>% st_as_sf()
 
-### street lights out
-lights_list <- c("Alley Light Outage", "Street Light Outage")
-lights_out <- get_complaints(dumping_query, base_url, lights_list) %>% mutate(outage_count = 1)
+### street lights out----------------------------------------
+# lights_list <- c("Alley Light Outage", "Street Light Outage")
+# lights_out <- get_complaints(dumping_query, base_url, lights_list) %>% mutate(outage_count = 1)
+
+lights_out_path <- "hw3_data/lights_out.geojson"
+# saveRDS(lights_out, lights_out_path)
+lights_out <- readRDS(lights_out_path)
 
 lights_net <- st_join(phl_grid, lights_out ) %>%
                   group_by(grid_id) %>%
@@ -157,24 +187,28 @@ lights_net <- st_join(phl_grid, lights_out ) %>%
 
 full_net <- left_join(full_net, st_drop_geometry(lights_net), by = "grid_id") %>% st_as_sf()
 
-### building permits
-building_perms_query <- sprintf("
-                  SELECT permitissuedate, typeofwork, ST_Y(the_geom) AS lat, ST_X(the_geom) AS lng
-                  FROM permits
-                  WHERE permitissuedate >= '%s' AND permitissuedate < '%s'
-                 ", three_years_ago, one_year_ago)
+### building permits----------------------------------------
+# building_perms_query <- sprintf("
+#                   SELECT permitissuedate, typeofwork, ST_Y(the_geom) AS lat, ST_X(the_geom) AS lng
+#                   FROM permits
+#                   WHERE permitissuedate >= '%s' AND permitissuedate < '%s'
+#                  ", three_years_ago, one_year_ago)
+# 
+# building_permits <- st_as_sf(get_carto(building_perms_query,
+#                               format = 'csv',
+#                               base_url = base_url,
+#                               stringsAsFactors = FALSE) |>
+#                       dplyr::filter(
+#                              !is.na(lat),
+#                              !is.na(lng)),
+#                       coords = c("lng", "lat"),
+#                       crs = st_crs('EPSG:4326')) |>
+#                       st_transform(crs = st_crs("EPSG:2272")) %>%
+#                     mutate(permits_count = 1)
 
-building_permits <- st_as_sf(get_carto(building_perms_query,
-                              format = 'csv',
-                              base_url = base_url,
-                              stringsAsFactors = FALSE) |>
-                      dplyr::filter(
-                             !is.na(lat),
-                             !is.na(lng)),
-                      coords = c("lng", "lat"),
-                      crs = st_crs('EPSG:4326')) |>
-                      st_transform(crs = st_crs("EPSG:2272")) %>%
-                    mutate(permits_count = 1)
+building_permits_path <- "hw3_data/building_permits.geojson"
+# saveRDS(building_permits, building_permits_path)
+building_permits <- readRDS(building_permits_path)
 
 permits_net <- st_join(phl_grid, building_permits) %>%
                   group_by(grid_id) %>%
@@ -184,10 +218,26 @@ permits_net <- st_join(phl_grid, building_permits) %>%
 full_net <- left_join(full_net, st_drop_geometry(permits_net), by = "grid_id") %>% st_as_sf()
 
 
-### income
+### income----------------------------------------
 
-### race
+### race----------------------------------------
 
+
+### add hoods for grouping--------------------------
+intersection <- st_intersection(phl_grid, hoods)
+intersection$intersection_area <- st_area(intersection)
+max_intersection <- intersection %>%
+  group_by(grid_id) %>%
+  filter(intersection_area == max(intersection_area)) %>%
+  ungroup() %>%
+  select(grid_id, mapname) %>%
+  st_drop_geometry()
+
+grid_w_hood <- left_join(phl_grid, max_intersection, by = c("grid_id" = "grid_id")) %>%
+                st_drop_geometry()
+
+
+full_net <- left_join(full_net, grid_w_hood, by = "grid_id")
 ```
 
 
@@ -306,27 +356,30 @@ reg_vars <- c("count_vacant",
               "cars_count",
               "outage_count",
               "permits_count",
-              "count_complaints")
+              "count_complaints",
+              "mapname")
 
 reg_data <- full_net %>% 
               dplyr::select(all_of(reg_vars)) %>% 
-              st_point_on_surface() %>% 
-              mutate(across(where(is.numeric), as.integer))
+              st_point_on_surface() # %>% 
+             #  mutate(across(where(is.numeric), as.integer))
 
 task <- as_task_regr_st(reg_data, target = "count_complaints")
 
 learner <- mlr3::lrn("regr.glm", 
-                     # family = "poisson", 
-                     feature_types = "integer", 
+                     family = "poisson", 
+                     feature_types = "numeric", 
                      predict_type = "response")
 
 # reduce verbosity
 lgr::get_logger("mlr3")$set_threshold("warn")
+
+task$set_col_roles("mapname", roles = "space")
 ```
 
 
 ```{r regular cv}
-cv_resampling = mlr3::rsmp("repeated_cv", folds = 5, repeats = 100, id = "NSpCV")
+cv_resampling = mlr3::rsmp("cv", folds = 100, id = "NSpCV")
 
 # run spatial cross-validation and save it to resample result glm (rr_glm)
 rr_cv_glm = mlr3::resample(task = task,
@@ -336,27 +389,105 @@ rr_cv_glm = mlr3::resample(task = task,
 score_cv_glm = rr_cv_glm$score(measure = mlr3::msr("regr.mae"))
 score_cv_glm = score_cv_glm[, .(task_id, learner_id, resampling_id, regr.mae)]
 
-q <- as.data.table(rr_cv_glm$prediction(predict_sets = "test"))
+cv_preds <- as.data.table(rr_cv_glm$prediction(predict_sets = "test"))
 
-q1 <- q %>%
+cv_sum <- cv_preds %>%
         mutate(row_ids = as.character(row_ids)) %>%
         group_by(row_ids) %>%
         summarize(avg_response = mean(response)) %>%
         mutate(row_ids = as.integer(row_ids)) %>%
         st_drop_geometry()
 
-hmm <- cbind(full_net, q1) %>%
+cv_net <- cbind(full_net, cv_sum) %>%
           mutate(abs_error = abs(avg_response - count_complaints)) %>%
           st_as_sf()
 
-tm <- tm_shape(hmm) +
-  tm_polygons(col = "abs_error", border.alpha = 0, style = "jenks", palette = "viridis")
+tm_shape(cv_net) +
+  tm_polygons(col = "avg_response", border.alpha = 0, style = "jenks", palette = "viridis")
 
-tmap_theme(tm, "Predicted Illegal Dumping Distribution\nGLM")
+tm_shape(cv_net) +
+  tm_polygons(col = "abs_error", border.alpha = 0, style = "jenks", palette = "viridis")
+```
+
+```{r comparison with caret}
+fitControl <- trainControl(method = "cv",
+                           number = 100) 
+                           
+reg_cv <- train(count_complaints ~ ., 
+                data = reg_data %>% select(-mapname) %>% st_drop_geometry(), 
+                 method = "glm", 
+                 trControl = fitControl)  
+
+reg_cv_sum <- data.frame(preds = reg_cv$finalModel$fitted.values)
+reg_cv_sum$truth <- reg_cv$trainingData$`.outcome`
+reg_cv_sum <- reg_cv_sum %>%
+                  mutate(abs_error = abs(preds - truth))
+
+to_map <- cbind(full_net, reg_cv_sum)
+
+tm_shape(to_map) +
+  tm_polygons(col = "preds", border.alpha = 0, style = "jenks", palette = "viridis")
+```
+
+```{r spcv 2}
+
+library(recipes)
+
+install.packages("poissonreg")
+library(poissonreg)
+
+install.packages("spatialsample")
+library(spatialsample)
+
+colnames(reg_data)
+
+cluster_folds <- spatial_leave_location_out_cv(st_drop_geometry(reg_data), mapname)
+
+
+# `splits` will be the `rsplit` object
+compute_preds <- function(splits) {
+  # fit the model to the analysis set
+  mod <- glm(count_complaints ~ count_vacant + cars_count + outage_count + permits_count, 
+             family = "poisson",
+            data = analysis(splits)
+  )
+  # identify the assessment set
+  holdout <- assessment(splits)
+  # return the assessment set, with true and predicted price
+  tibble::tibble(
+    geometry = holdout$geometry,
+    Sale_Price = holdout$count_complaints,
+    .pred = predict(mod, holdout)
+  )
+}
+
+cv_res <- resamples %>%
+  mutate(.preds = purrr::map(splits, compute_preds))
+
+# assuming the dataframe (data) has a column called "group"
+# folds <- group_vfold_cv(reg_data, group = "mapname", v = 100)
+# 
+model_spec <- poisson_reg(mode = "regression") # %>% set_engine("glm")
+
+x <- recipes::recipe(count_complaints ~ count_vacant + cars_count + outage_count + permits_count, data = st_drop_geometry(reg_data))
+
+results <- fit_resamples(model_spec, x, resamples = cluster_folds, metrics = metric_set(mae), control = control_grid(save_pred = TRUE))
+
+predictions <- collect_predictions(results)
+
+preds_net <- left_join(phl_grid, predictions, by = c("grid_id" = ".row")) %>%
+                mutate(abs_error = abs(.pred - count_complaints)) %>%
+                st_as_sf()
+
+tm_shape(preds_net) +
+  tm_polygons(col = ".pred", border.alpha = 0, style = "jenks", palette = "viridis")
+
+tm_shape(preds_net) +
+  tm_polygons(col = "abs_error", border.alpha = 0, style = "jenks", palette = "viridis")
 ```
 
 ```{r spcv}
-spcv_resampling = mlr3::rsmp("repeated_spcv_coords", folds = 5, repeats = 100, id = "SpCV")
+spcv_resampling = mlr3::rsmp("sptcv_cstf", folds = 100, id = "SpCV")
 
 # run spatial cross-validation and save it to resample result glm (rr_glm)
 rr_spcv_glm = mlr3::resample(task = task,
@@ -366,23 +497,24 @@ rr_spcv_glm = mlr3::resample(task = task,
 score_spcv_glm = rr_spcv_glm$score(measure = mlr3::msr("regr.mae"))
 score_spcv_glm = score_spcv_glm[, .(task_id, learner_id, resampling_id, regr.mae)]
 
-spq <- as.data.table(rr_cv_glm$prediction(predict_sets = "test"))
+spcv_preds <- as.data.table(rr_spcv_glm$prediction(predict_sets = "test"))
 
-spq1 <- spq %>%
+spcv_sum <- spcv_preds %>%
         mutate(row_ids = as.character(row_ids)) %>%
         group_by(row_ids) %>%
         summarize(avg_response = mean(response)) %>%
         mutate(row_ids = as.integer(row_ids)) %>%
         st_drop_geometry()
 
-sphmm <- cbind(full_net, spq1) %>%
+spcv_net <- cbind(full_net, spcv_sum) %>%
           mutate(abs_error = abs(avg_response - count_complaints)) %>%
           st_as_sf()
 
-tm <- tm_shape(sphmm) +
-  tm_polygons(col = "abs_error", border.alpha = 0, style = "jenks", palette = "viridis")
+tm_shape(spcv_net) +
+  tm_polygons(col = "avg_response", border.alpha = 0, style = "jenks", palette = "viridis")
 
-tmap_theme(tm, "Predicted Illegal Dumping Distribution\nGLM")
+tm_shape(spcv_net) +
+  tm_polygons(col = "abs_error", border.alpha = 0, style = "jenks", palette = "viridis")
 ```
 
 ```{r comparison}
