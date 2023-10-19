@@ -3,6 +3,9 @@ title: "Geospatial Risk Prediction: Illegal Dumping"
 subtitle: "MUSA 508, Lab #3"
 author: "Nissim Lebovits"
 date: today
+project:
+  type: website
+  output-dir: docs
 format: 
   html:
     embed-resources: true
@@ -609,6 +612,9 @@ tm <- tm_shape(recent_complaints_net) +
 tmap_theme(tm, "Illegal Dumping in 2023")
 ```
 But I found that this was highly dependent on how I define the class breaks for the model. For instance, when I use quantile breaks, SPCV outperforms KDE. But when I use Jenks breaks, the KDe outperforms the SPCV.
+
+Could rewrite this section with rbind and stack the dataframes instead...
+
 ```{r 2023 dumping to grids}
 preds_net <- left_join(preds_net, st_drop_geometry(recent_complaints_net))
 
