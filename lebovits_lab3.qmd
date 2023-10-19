@@ -21,8 +21,7 @@ execute:
 ---
 
 ## Summary
-```{r setup, set.seed(333)}
-
+```{r setup, set.seed(33)}
 
 library(tidyverse)
 library(sf)
@@ -34,16 +33,11 @@ library(ggpubr)
 library(ggthemr)
 library(arcpullr)
 library(caret)
-# install.packages("mlr3")
-# install.packages("mlr3spatiotempcv")
-# install.packages("mlr3viz")
-# remotes::install_github("mlr-org/mlr3extralearners@*release")
-library(mlr3)
-library(mlr3spatiotempcv)
-library(mlr3viz)
-library(mlr3extralearners)
 library(rsample) 
 library(tidymodels)
+library(recipes)
+library(poissonreg)
+library(spatialsample)
 
 source("themes.R")
 
@@ -89,7 +83,7 @@ phl_path <- "https://opendata.arcgis.com/datasets/405ec3da942d4e20869d4e1449a2be
 phl <- st_read(phl_path, quiet = TRUE) %>%
           st_transform(crs = crs)
 
-cellsize <- 2500
+cellsize <- 2000
 
 phl_grid <- st_make_grid(phl, crs = crs, cellsize = cellsize, square = FALSE) %>% 
                 st_as_sf()
@@ -291,7 +285,7 @@ A note on data: data are drawn from 2020 to 2022, the peak years of the COVID-19
 tmap_mode('plot')
 
 tm <- tm_shape(dumping_net) +
-  tm_polygons(col = "count_complaints", border.alpha = 0, style = "jenks", palette = "viridis")
+  tm_polygons(col = "count_complaints", border.alpha = 0, style = "fisher", palette = "viridis")
 
 tmap_theme(tm, "Fishnet Grid of Illegal Dumping Distribution\n2020-22")
 ```
@@ -318,8 +312,6 @@ tm <- tm_shape(lisa) +
 
 tmap_theme(tm, "Illegal Dumping Hotspots\n2020-22")
 ```
-
-### Poisson Regression
 
 #### Correlations
 ```{r corrplots}
@@ -349,8 +341,13 @@ ggscatter(full_net, x = "count_complaints", y = "outage_count",
    ) + stat_cor(method = "pearson", label.x = 75, label.y = 75)
 ```
 
-#### Model
+### Model
 Found that a regression tree had a lower MAE than a GLM, but oh, well.
+
+### Poisson Regression
+
+## Results
+
 ```{r consistent}
 reg_vars <- c("count_vacant",
               "cars_count",
@@ -363,53 +360,9 @@ reg_data <- full_net %>%
               dplyr::select(all_of(reg_vars)) %>% 
               st_point_on_surface() # %>% 
              #  mutate(across(where(is.numeric), as.integer))
-
-task <- as_task_regr_st(reg_data, target = "count_complaints")
-
-learner <- mlr3::lrn("regr.glm", 
-                     family = "poisson", 
-                     feature_types = "numeric", 
-                     predict_type = "response")
-
-# reduce verbosity
-lgr::get_logger("mlr3")$set_threshold("warn")
-
-task$set_col_roles("mapname", roles = "space")
 ```
 
-
-```{r regular cv}
-cv_resampling = mlr3::rsmp("cv", folds = 100, id = "NSpCV")
-
-# run spatial cross-validation and save it to resample result glm (rr_glm)
-rr_cv_glm = mlr3::resample(task = task,
-                             learner = learner,
-                             resampling = cv_resampling)
-
-score_cv_glm = rr_cv_glm$score(measure = mlr3::msr("regr.mae"))
-score_cv_glm = score_cv_glm[, .(task_id, learner_id, resampling_id, regr.mae)]
-
-cv_preds <- as.data.table(rr_cv_glm$prediction(predict_sets = "test"))
-
-cv_sum <- cv_preds %>%
-        mutate(row_ids = as.character(row_ids)) %>%
-        group_by(row_ids) %>%
-        summarize(avg_response = mean(response)) %>%
-        mutate(row_ids = as.integer(row_ids)) %>%
-        st_drop_geometry()
-
-cv_net <- cbind(full_net, cv_sum) %>%
-          mutate(abs_error = abs(avg_response - count_complaints)) %>%
-          st_as_sf()
-
-tm_shape(cv_net) +
-  tm_polygons(col = "avg_response", border.alpha = 0, style = "jenks", palette = "viridis")
-
-tm_shape(cv_net) +
-  tm_polygons(col = "abs_error", border.alpha = 0, style = "jenks", palette = "viridis")
-```
-
-```{r comparison with caret}
+```{r cv}
 fitControl <- trainControl(method = "cv",
                            number = 100) 
                            
@@ -425,116 +378,49 @@ reg_cv_sum <- reg_cv_sum %>%
 
 to_map <- cbind(full_net, reg_cv_sum)
 
-tm_shape(to_map) +
-  tm_polygons(col = "preds", border.alpha = 0, style = "jenks", palette = "viridis")
+tm <- tm_shape(to_map) +
+  tm_polygons(col = "preds", border.alpha = 0, style = "fisher", palette = "viridis")
+
+tmap_theme(tm, "Predicted Illegal Dumping Hotspots\n100-Fold Cross Validation")
 ```
 
-```{r spcv 2}
-
-library(recipes)
-
-install.packages("poissonreg")
-library(poissonreg)
-
-install.packages("spatialsample")
-library(spatialsample)
-
-colnames(reg_data)
-
+```{r spcv}
 cluster_folds <- spatial_leave_location_out_cv(st_drop_geometry(reg_data), mapname)
-
-
-# `splits` will be the `rsplit` object
-compute_preds <- function(splits) {
-  # fit the model to the analysis set
-  mod <- glm(count_complaints ~ count_vacant + cars_count + outage_count + permits_count, 
-             family = "poisson",
-            data = analysis(splits)
-  )
-  # identify the assessment set
-  holdout <- assessment(splits)
-  # return the assessment set, with true and predicted price
-  tibble::tibble(
-    geometry = holdout$geometry,
-    Sale_Price = holdout$count_complaints,
-    .pred = predict(mod, holdout)
-  )
-}
-
-cv_res <- resamples %>%
-  mutate(.preds = purrr::map(splits, compute_preds))
-
-# assuming the dataframe (data) has a column called "group"
-# folds <- group_vfold_cv(reg_data, group = "mapname", v = 100)
-# 
-model_spec <- poisson_reg(mode = "regression") # %>% set_engine("glm")
-
+model_spec <- poisson_reg(mode = "regression") %>% set_engine("glm")
 x <- recipes::recipe(count_complaints ~ count_vacant + cars_count + outage_count + permits_count, data = st_drop_geometry(reg_data))
 
 results <- fit_resamples(model_spec, x, resamples = cluster_folds, metrics = metric_set(mae), control = control_grid(save_pred = TRUE))
-
 predictions <- collect_predictions(results)
-
+metrics <- collect_metrics(results, summarize = FALSE)
+overall_metrics <- collect_metrics(results)
+  
 preds_net <- left_join(phl_grid, predictions, by = c("grid_id" = ".row")) %>%
                 mutate(abs_error = abs(.pred - count_complaints)) %>%
                 st_as_sf()
 
-tm_shape(preds_net) +
-  tm_polygons(col = ".pred", border.alpha = 0, style = "jenks", palette = "viridis")
+tm <- tm_shape(preds_net) +
+  tm_polygons(col = ".pred", border.alpha = 0, style = "fisher", palette = "viridis")
+tmap_theme(tm, "Predicted Illegal Dumping Hotspots\nSpatial Cross Validation")
 
-tm_shape(preds_net) +
-  tm_polygons(col = "abs_error", border.alpha = 0, style = "jenks", palette = "viridis")
+tm <- tm_shape(preds_net) +
+  tm_polygons(col = "abs_error", border.alpha = 0, style = "fisher", palette = "viridis")
+tmap_theme(tm, "Predicted Illegal Dumping Prediction Errors\nSpatial Cross Validation")
 ```
 
-```{r spcv}
-spcv_resampling = mlr3::rsmp("sptcv_cstf", folds = 100, id = "SpCV")
-
-# run spatial cross-validation and save it to resample result glm (rr_glm)
-rr_spcv_glm = mlr3::resample(task = task,
-                             learner = learner,
-                             resampling = spcv_resampling)
-
-score_spcv_glm = rr_spcv_glm$score(measure = mlr3::msr("regr.mae"))
-score_spcv_glm = score_spcv_glm[, .(task_id, learner_id, resampling_id, regr.mae)]
-
-spcv_preds <- as.data.table(rr_spcv_glm$prediction(predict_sets = "test"))
-
-spcv_sum <- spcv_preds %>%
-        mutate(row_ids = as.character(row_ids)) %>%
-        group_by(row_ids) %>%
-        summarize(avg_response = mean(response)) %>%
-        mutate(row_ids = as.integer(row_ids)) %>%
-        st_drop_geometry()
-
-spcv_net <- cbind(full_net, spcv_sum) %>%
-          mutate(abs_error = abs(avg_response - count_complaints)) %>%
-          st_as_sf()
-
-tm_shape(spcv_net) +
-  tm_polygons(col = "avg_response", border.alpha = 0, style = "jenks", palette = "viridis")
-
-tm_shape(spcv_net) +
-  tm_polygons(col = "abs_error", border.alpha = 0, style = "jenks", palette = "viridis")
-```
-
-```{r comparison}
-design = benchmark_grid(task, learner, c(cv_resampling, spcv_resampling))
-bmr = benchmark(design)
-bmr$aggregate(msr("regr.mae"))[, c(5, 7)]
-```
 Interestingly, we note that, while the regular k-fold cross validation produces normally-distributed errors, the spatial k-fold cross validation produces a bimodal (or possibly trimodal) distribution, suggesting that perhaps different neighborhoods are prone to much higher rates of prediction error.
 ```{r prediction hist}
-bins <- as.integer(sqrt(nrow(score_cv_glm)))
 
-cv_mae_hist <- ggplot(score_cv_glm, aes(x = regr.mae)) +
-  geom_histogram(bins = bins) + 
+reg_cv_mae_results <- data.frame(MAE = reg_cv$resample$MAE)
+
+cv_mae_hist <- ggplot(reg_cv_mae_results, aes(x = MAE)) +
+  geom_histogram(bins = 10) +
   labs(title = "Distribution of MAE per Iteration",
-       subtitle = "Regular K-Fold Cross-Validation",
+       subtitle = "Regular 100-Fold Cross-Validation",
        x = "MAE",
        y = "Count")
 
-spcv_mae_hist <- ggplot(score_spcv_glm, aes(x = regr.mae)) +
-  geom_histogram(bins = bins) + 
+spcv_mae_hist <- ggplot(metrics, aes(x = .estimate)) +
+  geom_histogram(bins = 10) +
   labs(title = "Distribution of MAE per Iteration",
        subtitle = "Spatial K-Fold Cross-Validation",
        x = "MAE",
@@ -542,9 +428,25 @@ spcv_mae_hist <- ggplot(score_spcv_glm, aes(x = regr.mae)) +
 
 ggarrange(cv_mae_hist, spcv_mae_hist)
 ```
-## Results
+
+We note taht the MAE with spatial cross-validation is much higher than the MAE for regular 100-fold cross-validation (twice as high, in fact). 
+```{r mae x model}
+mae_df <- data.frame(
+  model = c("100-Fold CV", "Spatial CV"),
+  mae = c(reg_cv$results$MAE, overall_metrics$mean)
+)
+
+library(kableExtra)
+
+mae_df %>%
+  mutate(mae = round(mae, 2)) %>%
+  kbl() %>%
+  kable_minimal(full_width = F)
+```
 
 ## Discussion
+
+We noted that cell size had an impact on the accuracy of the model as well; larger cell sizes corresponded to 1) higher Pearson's correlation coefficients with predictors, and 2) more consistent MAEs when running spatial cross-validation. Based on this, we settled on a cell size of 2,500" after having tried both 1,000" and 500" previously. We take this to mean that larger cell sizes give up some localized precision while making the model on the whole more accurate (i.e., although they are predicting at broader geographic scales, the range of errors is smaller than with smaller cell sizes).
 
 ### Accuracy
 
