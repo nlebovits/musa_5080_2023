@@ -24,6 +24,21 @@ execute:
 ---
 
 ## Summary
+
+Illegal dumping is a major problem in Philadelphia. Especially in low-income, minority neighborhoods, illegal dumping has a significant impact on quality of life, property values, safety, and public health. Due to various causes, under-reporting of dumping issues in certain areas likely leads to selection bias. Below, we attempt to implement two Poisson regression-based predictive models to mitigate this selection bias. One of these models incorporates spatial process into its data in the form of spatial lag while the other does not. Both models are evaluated using regular 100-fold cross validation and leave one location out spatial cross validation. Finally, we compare the results to the accuracy of a traditional kernel density estimate-based hotspot prediction. We find that:
+
+1.  incorporating spatial process into the model substantially improved its performance,
+
+2.  spatial cross-validation reveals that random k-fold cross validation is meaningfully over-optimistic in its evaluation of predictions,
+
+3.  our model does not generalize well across neighborhoods or racial contexts,
+
+4.  our model does not meaningfully improve over a more traditional kernel density estimate prediction approach,
+
+5.  and finally, our model is highly sensitive to input conditions such as cell size and classification breaks.
+
+As a result, we do not recommend that this algorithm be put into production.
+
 ```{r setup, set.seed(33)}
 
 library(tidyverse)
@@ -43,6 +58,7 @@ library(poissonreg)
 library(spatialsample)
 library(kableExtra)
 library(classInt)
+library(viridisLite)
 
 source("themes.R")
 
@@ -50,6 +66,8 @@ knitr::opts_chunk$set(cache = T)
 options(tigris_use_cache = TRUE, scipen = 999)
 
 ggthemr('flat')
+
+viridis_purple <- viridis(n = 1)
 
 tmap_options(basemaps = "Esri.WorldGrayCanvas") #set global tmap basemap
 
@@ -79,16 +97,13 @@ get_complaints <- function(query, base_url, service_names_list){
                              closed_datetime = as.Date(closed_datetime)) %>%
                       st_transform(crs = st_crs("EPSG:2272")) # will need these to be projected for KDE later
 }
-```
-
-```{r wrangleR}
 
 ### PHL bounds and grid----------------------------------------
 phl_path <- "https://opendata.arcgis.com/datasets/405ec3da942d4e20869d4e1449a2be48_0.geojson"
 phl <- st_read(phl_path, quiet = TRUE) %>%
           st_transform(crs = crs)
 
-cellsize <- 2000
+cellsize <- 1000
 
 phl_grid <- st_make_grid(phl, crs = crs, cellsize = cellsize, square = FALSE) %>% 
                 st_as_sf()
@@ -217,11 +232,6 @@ permits_net <- st_join(phl_grid, building_permits) %>%
 full_net <- left_join(full_net, st_drop_geometry(permits_net), by = "grid_id") %>% st_as_sf()
 
 
-### income----------------------------------------
-
-### race----------------------------------------
-
-
 ### add hoods for grouping--------------------------
 intersection <- st_intersection(phl_grid, hoods)
 intersection$intersection_area <- st_area(intersection)
@@ -237,27 +247,44 @@ grid_w_hood <- left_join(phl_grid, max_intersection, by = c("grid_id" = "grid_id
 
 
 full_net <- left_join(full_net, grid_w_hood, by = "grid_id")
+
+
+### spacial process vars--------------------------
+lag_net <- full_net %>%
+  transmute(
+         x = x,
+         grid_id = grid_id,
+         mapname = mapname,
+         count_complaints = count_complaints,
+         nb = st_contiguity(x),
+         wt = st_weights(nb),
+         lag_dumping = st_lag(count_complaints, nb, wt),
+         lag_vacant = st_lag(count_vacant, nb, wt),
+         lag_cars = st_lag(cars_count, nb, wt),
+         lag_outages = st_lag(outage_count, nb, wt),
+         lag_permits = st_lag(permits_count, nb, wt))
 ```
 
-
-
 ## Introduction
+
 Illegal dumping is a major issue in Philadelphia. Especially in low-income, minority neighborhoods, illegal dumping has a significant impact on quality of life, property values, safety, and public health. For years, the City has failed to address the issue. This is likely due to a combination of factors such as bureaucratic ineptitude, lack of resources, the COVID-19 pandemic, and the sheer scale of the problem (there are, as of this writing, more than 1,600 open cases across the city, but only one detective assigned to solve them). In the case of illegal dumping, *selection bias* (when inaccurate sampling negatively impacts the quality of data) are likely a major issue. Residents of wealthier neighborhoods are more likely to report illegal dumping for a variety of reasons, such as more trust in City services and a higher expectation that something will actually be done about the problem. Residents of poorer, majority-minority neighborhoods are less inclined to report illegal dumping cases in part because they feel that nothing will be done about the problem anyway. As a result, there is likely under-reporting of illegal dumping in the neighborhoods it most impacts.
 
 ```{r map dumping}
 #| label: complaints-dot-map
-#| fig-cap: "A map of 5% of dumping complaints, 2020-22"
+#| fig-cap: "A map of illegal dumping complaints, 2020-22"
+
+
 
 tmap_mode('plot')
 
 tm <- tm_shape(phl) +
   tm_borders() +
-tm_shape(complaints_sample) +
-  tm_dots(clustering = TRUE)
+tm_shape(complaints) +
+  tm_dots(col = viridis_purple, alpha = 0.1)
 
-tmap_theme(tm, "Sample of Complaints\n2020-22")
+tmap_theme(tm, "Illegal Dumping Complaints\n2020-22")
 ```
-
+As is evident from the histogram below, illegal dumping is also unevenly distributed across the city; the large majority of illegal dumping (complaints, at least) happen in only a handful of places across Philadelphia. This makes illegal dumping a suitable candidate for hotspot analysis, but also imposes some challenges in terms of statistical modeling of a non-normal distribution.
 ```{r dumping hist}
 #| label: dumping-hist
 #| fig-cap: "The distribution of illegal dumping across Philadelphia hexagon bins, 2020-22"
@@ -272,17 +299,15 @@ ggplot(full_net) +
        y = "Count")
 ```
 
-In order to more successfully intervene *proactively* to mitigate illegal dumping, it is useful to have a model that accounts for this selection bias. Below, we use a cross-validated Poisson regression to build a model that attempts to do exactly that. By incorporating associated risk factors (in this case, vacant properties, abandoned cars, street lights out, building permits, income, and race), we seek to construct a model that more can more accurately predict future occurrences of illegal dumping while mitigating the influence of selection bias.
+In order to more successfully intervene *proactively* to mitigate illegal dumping, it is useful to have a model that accounts for this selection bias. Below, we use a cross-validated Poisson regression to build a model that attempts to do exactly that. By incorporating associated risk factors (in this case, vacant properties, abandoned cars, street lights out, and building permits), we seek to construct a model that more can more accurately predict future occurrences of illegal dumping while mitigating the influence of selection bias.
 
 ## Methods
 
 ### Data Sources & Cleaning
+To begin with, we draw on several City data sources for feature engineering. We use data from 2020 to 2022, and, in addition to illegal dumping complaints, incorporate abandoned vehicles, light outages, vacant properties, and building permits. Note that, because these data come from the peak years of the COVID-19 pandemic, they are likely anomalous in many ways, such as the fact that the Kenney administration cut the sanitation department's budget.
 
-
-A note on data: data are drawn from 2020 to 2022, the peak years of the COVID-19 pandemic. As a result, they are likely anomalous in many ways, such as the fact that the Kenney administration cut the sanitation department's budget.
-
-#### The Fishnet Grid
-
+#### The Fishnet Grid and Spatial Process
+For the purposes of our spatial model, we aggregate data to a grid of equal-area hexagons covering Philadelphia. As is noted below, the cell size of these hexagons has a meaningful impact on the accuracy of the model. Ideally, this cell size should be matched to the spatial process of the dependent variable, but in this case we have settled on a value of `r cellsize` feet, based on a trade-off between optimizing MAE and processing speed. (Generally, we found that smaller cell sizes reduced MAE, especially for the spatial process models.)
 ```{r complaints net}
 #| label: dumping-net
 #| fig-cap: "The distribution of illegal dumping across Philadelphia, 2020-22"
@@ -295,7 +320,26 @@ tm <- tm_shape(dumping_net) +
 tmap_theme(tm, "Fishnet Grid of Illegal Dumping Distribution\n2020-22")
 ```
 
-Using local moran's I calculations, we can identify hotspots of illegal dumping in Philadelphia.
+In addition to the aggregated data, we calculate the *spatial lag* of contiguous neighbors. (Note that this introduces some issues with edge cases that have fewer contiguous neighbors than others.) We do this in order to account for the inherently spatial nature of our data, and it is an approximation of [spatial lag regression](https://rpubs.com/nlebovits/musa-550-assign-2). The spatial lag model assumes that the value of the dependent variable at one location is associated with the values of that variable in nearby locations. “Nearby” is as defined by the weights matrix W (rook, queen, or within a certain distance of one another). In other words, the spatial lag model includes the spatial lag of the dependent variable as a predictor. Although we do not implement a proper spatial lag model here, we attempt to approximate it be incorporating the lagged values of neighboring cells into our spatial process models. Here, for example, we visualize the spatial lag of abandoned cars relative to the actual values of abandoned cars.
+
+```{r complaints lag net}
+#| label: dumping-lag-net
+#| fig-cap: "The spatial lag of illegal dumping across Philadelphia, 2020-22"
+
+tmap_mode('plot')
+
+cars_map <- tm_shape(full_net) +
+                tm_polygons(col = "cars_count", border.alpha = 0, style = "fisher", palette = "viridis") %>%
+              tmap_theme(., "Abandoned Cars Complaints\n2020-22")
+
+cars_lag_map <- tm_shape(lag_net) +
+                tm_polygons(col = "lag_cars", border.alpha = 0, style = "fisher", palette = "viridis") %>%
+              tmap_theme(., "Lag of Abandoned Cars Complaints\n2020-22")
+
+tmap_arrange(cars_map, cars_lag_map, ncol = 2)
+```
+
+Using local Moran's I calculations, we can identify statistically significant hotspots of illegal dumping in Philadelphia. They appear to cluster in North Philly, West Philly, and Center City, roughly.
 ```{r lisa}
 dumping_net <- dumping_net %>%
                   mutate(nb = st_contiguity(x),
@@ -305,54 +349,103 @@ dumping_net <- dumping_net %>%
 lisa <- dumping_net %>% 
   mutate(moran = local_moran(count_complaints, nb, wt)) %>% 
   tidyr::unnest(moran) %>% 
-  mutate(pysal = ifelse(p_folded_sim <= 0.1, as.character(pysal), NA))
+  mutate(pysal = ifelse(p_folded_sim <= 0.1, as.character(pysal), NA),
+         hotspot = case_when(
+           pysal == "High-High" ~ "Signficant",
+           TRUE ~ "Not Signficant"
+         ))
 
-palette <- c("High-High" = "#B20016", 
-             "Low-Low" = "#1C4769", 
-             "Low-High" = "#24975E", 
-             "High-Low" = "#EACA97")
+# 
+# palette <- c("High-High" = "#B20016", 
+#              "Low-Low" = "#1C4769", 
+#              "Low-High" = "#24975E", 
+#              "High-Low" = "#EACA97")
 
-tm <- tm_shape(lisa) +
-  tm_polygons(col = "pysal", border.alpha = 0, style = "cat", palette = palette, textNA = "Not a Hotspot")
+morans_i <- tm_shape(lisa) +
+  tm_polygons(col = "ii", border.alpha = 0, style = "jenks", palette = 'viridis')%>%
+              tmap_theme_minimal("Local Moran's I")
 
-tmap_theme(tm, "Illegal Dumping Hotspots\n2020-22")
+p_value <- tm_shape(lisa) +
+  tm_polygons(col = "p_ii", border.alpha = 0, style = "jenks", palette = '-viridis')%>%
+              tmap_theme_minimal("P-Values")
+
+sig_hotspots <- tm_shape(lisa) +
+  tm_polygons(col = "hotspot", border.alpha = 0, style = "cat", palette = 'viridis', textNA = "Not a Hotspot")%>%
+              tmap_theme_minimal("Significant Hotspots")
+
+tmap_arrange(morans_i, p_value, sig_hotspots, ncol = 3)
 ```
 
 #### Correlations
+To assess the relevance to our model, we can plot the correlation of our predictors with our dependent variable. We note that all of our predictors have high R-squared values, and that, generally, our spatial process features have slightly higher R-squared values than their non-spatial process counterparts.
 ```{r corrplots}
+#| results: hide
+#| fig-keep: all
 
-ggscatter(full_net, x = "count_complaints", y = "count_vacant",
+corr1 <- ggscatter(full_net, x = "count_complaints", y = "count_vacant",
    add = "reg.line",  # Add regressin line
    add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
    conf.int = TRUE # Add confidence interval
-   ) + stat_cor(method = "pearson", label.x = 75, label.y = 75)
+   ) + stat_cor(method = "pearson", label.x = min(full_net$count_complaints), label.y = max(full_net$count_vacant))
 
-ggscatter(full_net, x = "count_complaints", y = "cars_count",
+corr2 <- ggscatter(full_net, x = "count_complaints", y = "cars_count",
    add = "reg.line",  # Add regressin line
    add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
    conf.int = TRUE # Add confidence interval
-   ) + stat_cor(method = "pearson", label.x = 75, label.y = 75)
+   ) + stat_cor(method = "pearson", label.x = min(full_net$count_complaints), label.y = max(full_net$cars_count))
 
-ggscatter(full_net, x = "count_complaints", y = "permits_count",
+corr3 <- ggscatter(full_net, x = "count_complaints", y = "permits_count",
    add = "reg.line",  # Add regressin line
    add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
    conf.int = TRUE # Add confidence interval
-   ) + stat_cor(method = "pearson", label.x = 75, label.y = 75)
+   ) + stat_cor(method = "pearson", label.x = min(full_net$count_complaints), label.y = max(full_net$permits_count))
 
-ggscatter(full_net, x = "count_complaints", y = "outage_count",
+corr4 <- ggscatter(full_net, x = "count_complaints", y = "outage_count",
    add = "reg.line",  # Add regressin line
    add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
    conf.int = TRUE # Add confidence interval
-   ) + stat_cor(method = "pearson", label.x = 75, label.y = 75)
+   ) + stat_cor(method = "pearson", label.x = min(full_net$count_complaints), label.y = max(full_net$outage_count))
+
+corr5 <- ggscatter(lag_net, x = "count_complaints", y = "lag_vacant",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   ) + stat_cor(method = "pearson", label.x = min(lag_net$count_complaints), label.y = max(lag_net$lag_vacant))
+
+corr6 <- ggscatter(lag_net, x = "count_complaints", y = "lag_cars",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   ) + stat_cor(method = "pearson", label.x = min(lag_net$count_complaints), label.y = max(lag_net$lag_cars))
+
+corr7 <- ggscatter(lag_net, x = "count_complaints", y = "lag_permits",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   ) + stat_cor(method = "pearson", label.x = min(lag_net$count_complaints), label.y = max(lag_net$lag_permits))
+
+corr8 <- ggscatter(lag_net, x = "count_complaints", y = "lag_outages",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   ) +
+  stat_cor(method = "pearson", label.x = min(lag_net$count_complaints), label.y = max(lag_net$lag_outages))
+
+ggarrange(corr1, corr2, corr3, corr4, corr5, corr6, corr7, corr8, ncol = 2)
 ```
 
 ### Model
-Found that a regression tree had a lower MAE than a GLM, but oh, well.
 
-### Poisson Regression
+#### Poisson Regression
+Below, we implement two versions of a Poisson regression, which is a type of generalized linear model (GLM) specifically meant to address count data that are skewed, as in the case of our illegal dumping data. (This contrasts with the default version of a GLM, which is based on a Gaussian, or normal, distribution of data.) We note that a Poisson regression is not the only potential model that could be used here, and that we found, for example, slightly better results using a regression tree, which suggests that there may be other suitable ways to approach this problem as well. 
+
+#### Spatial Process
+To account for spatial process, as mentioned above, we took inspiration from a spatial lag regression approach. Thus, we used our Poisson regression on two sets of data: one that was simply counts of predictors aggregated to our hexagon fishnet, and one that was the spatial lag of these predictors. Our hypothesis was that the spatial lag would minimize the impact of outliers and better account for spatial process.
 
 ## Results
 
+### Non-Spatial Process Data
+Broadly speaking, we see that our non-spatial process data produces granular hotspots fairly consistent with what would expect. Both the k-fold cross validation and the leave one geography out spatial cross validation produce similar prediction patterns, although we note that the spatial CV returns a much broader range of predictions, including some predictions that are obviously wrong.
 ```{r consistent}
 reg_vars <- c("count_vacant",
               "cars_count",
@@ -364,15 +457,15 @@ reg_vars <- c("count_vacant",
 reg_data <- full_net %>% 
               dplyr::select(all_of(reg_vars)) %>% 
               st_point_on_surface()
-```
 
-```{r cv}
+###k-fold cv, regular data----------------------------------
 fitControl <- trainControl(method = "cv",
                            number = 100) 
                            
 reg_cv <- train(count_complaints ~ ., 
                 data = reg_data %>% select(-mapname) %>% st_drop_geometry(), 
                  method = "glm", 
+                 family = "poisson",
                  trControl = fitControl)  
 
 reg_cv_sum <- data.frame(preds = reg_cv$finalModel$fitted.values)
@@ -382,13 +475,9 @@ reg_cv_sum <- reg_cv_sum %>%
 
 to_map <- cbind(full_net, reg_cv_sum)
 
-tm <- tm_shape(to_map) +
-  tm_polygons(col = "preds", border.alpha = 0, style = "fisher", palette = "viridis")
 
-tmap_theme(tm, "Predicted Illegal Dumping Hotspots\n100-Fold Cross Validation")
-```
 
-```{r spcv}
+###spcv, regular data----------------------------------
 cluster_folds <- spatial_leave_location_out_cv(st_drop_geometry(reg_data), mapname)
 model_spec <- poisson_reg(mode = "regression") %>% set_engine("glm")
 x <- recipes::recipe(count_complaints ~ count_vacant + cars_count + outage_count + permits_count, data = st_drop_geometry(reg_data))
@@ -402,42 +491,119 @@ preds_net <- left_join(phl_grid, predictions, by = c("grid_id" = ".row")) %>%
                 mutate(abs_error = abs(.pred - count_complaints)) %>%
                 st_as_sf()
 
-tm <- tm_shape(preds_net) +
-  tm_polygons(col = ".pred", border.alpha = 0, style = "fisher", palette = "viridis")
-tmap_theme(tm, "Predicted Illegal Dumping Hotspots\nSpatial Cross Validation")
+### map preds--------------------------------------------
+cv_preds <- tm_shape(to_map) +
+  tm_polygons(col = "preds", border.alpha = 0, style = "fisher", palette = "viridis") %>%
+  tmap_theme("Predicted Illegal Dumping Hotspots\n100-Fold Cross Validation")
 
-tm <- tm_shape(preds_net) +
-  tm_polygons(col = "abs_error", border.alpha = 0, style = "fisher", palette = "viridis")
-tmap_theme(tm, "Predicted Illegal Dumping Prediction Errors\nSpatial Cross Validation")
+spcv_preds <- tm_shape(preds_net) +
+  tm_polygons(col = ".pred", border.alpha = 0, style = "fisher", palette = "viridis") %>%
+tmap_theme("Predicted Illegal Dumping Hotspots\nSpatial Cross Validation")
+
+tmap_arrange(cv_preds, spcv_preds, ncol = 2)
 ```
 
-Interestingly, we note that, while the regular k-fold cross validation produces normally-distributed errors, the spatial k-fold cross validation produces a bimodal (or possibly trimodal) distribution, suggesting that perhaps different neighborhoods are prone to much higher rates of prediction error.
+### Spatial Process Data
+On the other hand, the spatial process data produces less granular hotspots, but this tradeoff appears to increase the accuracy of the model. The hotspots are not as localized, but the range of predictions is much more consistent with what we would expect.
+```{r set lag reg data}
+lag_reg_vars <- c("lag_vacant",
+              "lag_cars",
+              "lag_outages",
+              "lag_permits",
+              "count_complaints",
+              "mapname")
+
+lag_reg_data <- lag_net %>% 
+              dplyr::select(all_of(lag_reg_vars)) %>% 
+              st_point_on_surface()
+
+###k-fold cv, spatial process data----------------------------------
+fitControl <- trainControl(method = "cv",
+                           number = 100) 
+                           
+lag_reg_cv <- train(count_complaints ~ ., 
+                data = lag_reg_data %>% select(-mapname) %>% st_drop_geometry(), 
+                 method = "glm", 
+                family = "poisson",
+                 trControl = fitControl)  
+
+lag_reg_cv_sum <- data.frame(preds = lag_reg_cv$finalModel$fitted.values)
+lag_reg_cv_sum$truth <- lag_reg_cv$trainingData$`.outcome`
+lag_reg_cv_sum <- lag_reg_cv_sum %>%
+                  mutate(abs_error = abs(preds - truth))
+
+lag_to_map <- cbind(lag_net, lag_reg_cv_sum)
+
+###spcv, spatial process data----------------------------------
+lag_cluster_folds <- spatial_leave_location_out_cv(st_drop_geometry(lag_reg_data), mapname)
+lag_model_spec <- poisson_reg(mode = "regression") %>% set_engine("glm")
+lag_x <- recipes::recipe(count_complaints ~ lag_vacant + lag_cars + lag_outages + lag_permits, data = st_drop_geometry(lag_reg_data))
+
+lag_results <- fit_resamples(lag_model_spec, lag_x, resamples = lag_cluster_folds, metrics = metric_set(mae), control = control_grid(save_pred = TRUE))
+lag_predictions <- collect_predictions(lag_results)
+lag_metrics <- collect_metrics(lag_results, summarize = FALSE)
+lag_overall_metrics <- collect_metrics(lag_results)
+  
+lag_preds_net <- left_join(phl_grid, lag_predictions, by = c("grid_id" = ".row")) %>%
+                mutate(abs_error = abs(.pred - count_complaints)) %>%
+                st_as_sf()
+
+### map preds--------------------------------------------
+lag_cv_preds <- tm_shape(lag_to_map) +
+  tm_polygons(col = "preds", border.alpha = 0, style = "fisher", palette = "viridis") %>%
+  tmap_theme("Predicted Illegal Dumping Hotspots\n100-Fold CV, Spatial Process Data")
+
+lag_spcv_preds <- tm_shape(lag_preds_net) +
+  tm_polygons(col = ".pred", border.alpha = 0, style = "fisher", palette = "viridis") %>%
+tmap_theme("Predicted Illegal Dumping Hotspots\nSpatial CV, Spatial Process Data")
+
+tmap_arrange(lag_cv_preds, lag_spcv_preds, ncol = 2)
+```
+
+### Validation
+Validating our data, we see that the non-spatial process data yields an odd MAE outlier, indicating perhaps some kind of trouble dealing with the spatial nature of our data. On the other hand, the MAE distribution per iteration with our model that accounts for spatial process is much closer to a normal distribution, and appears to have a central tendency around 10.
 ```{r prediction hist}
 
 reg_cv_mae_results <- data.frame(MAE = reg_cv$resample$MAE)
+lag_reg_cv_mae_results <- data.frame(MAE = lag_reg_cv$resample$MAE)
 
 cv_mae_hist <- ggplot(reg_cv_mae_results, aes(x = MAE)) +
   geom_histogram(bins = 10) +
-  labs(title = "Distribution of MAE per Iteration",
-       subtitle = "Regular 100-Fold Cross-Validation",
+  labs(title = "Distribution of MAE",
+       subtitle = "100-Fold CV",
        x = "MAE",
        y = "Count")
 
 spcv_mae_hist <- ggplot(metrics, aes(x = .estimate)) +
   geom_histogram(bins = 10) +
-  labs(title = "Distribution of MAE per Iteration",
-       subtitle = "Spatial K-Fold Cross-Validation",
+  labs(title = "Distribution of MAE",
+       subtitle = "Spatial K-Fold CV",
        x = "MAE",
        y = "Count")
 
-ggarrange(cv_mae_hist, spcv_mae_hist)
-```
+lag_cv_mae_hist <- ggplot(lag_reg_cv_mae_results, aes(x = MAE)) +
+  geom_histogram(bins = 10) +
+  labs(title = "Distribution of MAE",
+       subtitle = "100-Fold CV, Spatial Process Data",
+       x = "MAE",
+       y = "Count")
 
-We note taht the MAE with spatial cross-validation is much higher than the MAE for regular 100-fold cross-validation (twice as high, in fact). 
+lag_spcv_mae_hist <- ggplot(lag_metrics, aes(x = .estimate)) +
+  geom_histogram(bins = 10) +
+  labs(title = "Distribution of MAE",
+       subtitle = "Spatial K-Fold CV, Spatial Process Data",
+       x = "MAE",
+       y = "Count")
+
+ggarrange(cv_mae_hist, spcv_mae_hist, lag_cv_mae_hist, lag_spcv_mae_hist, ncol = 2)
+```
+Here, we examine the mean and standard deviation of MAE per validation approach across the non-spatial and spatial models. We find that, while in both cases spatial cross validation reveals higher errors than k-fold CV, the model accounting for spatial process has a *much* lower MAE and a much smaller standard deviation of MAE than the model that does not account for spatial process. (We note, furthermore, that this is highly contingent on cell size; running this model with a cell size of 2500 feet, as opposed to our current `r cellsize` feet, we did not see much difference between the non-spatial and spatial models.)
 ```{r mae x model}
 mae_df <- data.frame(
-  model = c("100-Fold CV", "Spatial CV"),
-  mae = c(reg_cv$results$MAE, overall_metrics$mean)
+  model = c("100-Fold CV", "Spatial CV", "100-Fold CV", "Spatial CV"),
+  data = c("Regular", "Regular", "Spatial Process", "Spatial Process"),
+  mae = c(reg_cv$results$MAE, overall_metrics$mean, lag_reg_cv$results$MAE, lag_overall_metrics$mean),
+  mae_sd = c(reg_cv$results$MAESD, overall_metrics$std_err, lag_reg_cv$results$MAESD, lag_overall_metrics$std_err)
 )
 
 mae_df %>%
@@ -446,64 +612,40 @@ mae_df %>%
   kable_minimal(full_width = F)
 ```
 
-## Discussion
+```{r map errors}
+### non-spatial process------------------------------------------------------
+cv_errors <- tm_shape(to_map) +
+  tm_polygons(col = "abs_error", border.alpha = 0, style = "fisher", palette = "viridis") %>%
+  tmap_theme("Prediction Errors\n100-Fold CV")
 
-We noted that cell size had an impact on the accuracy of the model as well; larger cell sizes corresponded to 1) higher Pearson's correlation coefficients with predictors, and 2) more consistent MAEs when running spatial cross-validation. Based on this, we settled on a cell size of 2,500" after having tried both 1,000" and 500" previously. We take this to mean that larger cell sizes give up some localized precision while making the model on the whole more accurate (i.e., although they are predicting at broader geographic scales, the range of errors is smaller than with smaller cell sizes).
+spcv_errors <- tm_shape(preds_net) +
+  tm_polygons(col = "abs_error", border.alpha = 0, style = "fisher", palette = "viridis") %>%
+tmap_theme("Prediction Errors\nSpatial CV")
 
-### Accuracy
-
-### Generalizability
-
-#### Racial Context
-Aggregate model errors based on the racial makeup of neighborhoods in Philadelphia indicates that, whether we consider regular cross-fold validation or spatial cross-fold validation, our model performs worse in minority neighborhoods than in white neighborhoods. This indicates that it does not generalize across racial contexts.
-
-```{r race context}
-phl_acs <- readRDS("Midterm/phl_acs.RData")
-phl_acs <- phl_acs %>%
-              mutate(race_context = ifelse(pctWhite > .5, "Majority White", "Majority Non-White"),
-                     tract_id = 1:n())
-
-acs_intersection <- st_intersection(phl_grid, phl_acs)
-acs_intersection$intersection_area <- st_area(acs_intersection)
-acs_max_intersection <- acs_intersection %>%
-  group_by(grid_id) %>%
-  filter(intersection_area == max(intersection_area)) %>%
-  ungroup() %>%
-  select(grid_id, tract_id) %>%
-  st_drop_geometry()
-
-grid_w_acs <- left_join(phl_grid, acs_max_intersection, by = c("grid_id" = "grid_id")) %>%
-                        st_drop_geometry()
+tmap_arrange(cv_errors, spcv_errors, ncol = 2)
 
 
-cv_race_context_df <- left_join(to_map, grid_w_acs)
-cv_race_context_df <- left_join(cv_race_context_df, st_drop_geometry(phl_acs))
+### spatial-process------------------------------------------------------
+lag_cv_errors <- tm_shape(lag_to_map) +
+  tm_polygons(col = "abs_error", border.alpha = 0, style = "fisher", palette = "viridis") %>%
+  tmap_theme("Prediction Errors\n100-Fold CV, Spatial Process Data")
 
-spcv_race_context_df <- left_join(preds_net, grid_w_acs)
-spcv_race_context_df <- left_join(spcv_race_context_df, st_drop_geometry(phl_acs))
+lag_spcv_errors <- tm_shape(lag_preds_net) +
+  tm_polygons(col = "abs_error", border.alpha = 0, style = "fisher", palette = "viridis") %>%
+tmap_theme("Prediction Errors\nSpatial CV, Spatial Process Data")
 
-mae_x_race_cv <- cv_race_context_df %>%
-  st_drop_geometry() %>%
-  group_by(race_context) %>%
-  summarize(cv_avg_error = mean(abs_error))
-
-mae_x_race_spcv <- spcv_race_context_df %>%
-  st_drop_geometry() %>%
-  group_by(race_context) %>%
-  summarize(spcv_avg_error = mean(abs_error)) 
-
-mae_x_race <- left_join(mae_x_race_cv, mae_x_race_spcv)
-
-tm <- tm_shape(cv_race_context_df) +
-  tm_polygons(col = "race_context", border.alpha = 0, style = "cat", palette = "-viridis", textNA = "NA")
-tmap_theme(tm, "Racial Context in Philadelphia")
-
-mae_x_race %>%
-  kbl(caption = "MAE by Race Context and Model") %>%
-  kable_minimal(full_width = F)
+tmap_arrange(lag_cv_errors, lag_spcv_errors, ncol = 2)
 ```
 
-Here, we implement a kernel density estimate using an adaptive bandwidth. 
+
+
+## Discussion
+
+### Accuracy
+Overall, the model incorporating spatial process was more accurate than the one that did not. With a lower MAE and smaller standard deviation, it is preferrable. That does not, however, mean that it is an especially accurate model in general, merely that it is more accurate than a non-spatial Poisson regression model. 
+
+#### Comparing to KDE Approach
+To assess the accuracy of our model more generally, we compare it to the more traditional hotspot approach based on a kernel density estimate to see how both models fare in predicting 2023 illegal dumping based on 2020-22 data. Here, we implement an adaptive bandwidth kernel density estimate.
 ```{r kde}
 source("R/st_kde.R")
 
@@ -512,10 +654,12 @@ terra::crs(dumping_kde) <- crs
 dumping_kde_phl <- terra::mask(dumping_kde, phl)
 
 tm <- tm_shape(dumping_kde_phl) +
-  tm_raster(palette = 'viridis', title = "KDE", style = "cont")
-tmap_theme(tm, "Kernel Density Estimate of Illegal Dumping")
+  tm_raster(palette = 'viridis', title = "KDE", style = "fisher") %>%
+tmap_theme("Kernel Density Estimate of Illegal Dumping")
 ```
+We then classify both the KDE layer and the spatial process Poisson model into five risks classes based on quantile breaks (this decision is discussed below). We then compare how these risk classes capture the actual distribution of illegal dumping complaints in Philadelphia in 2023 so far.
 ```{r kde to grid}
+### kde class map------------------------------------------------
 kde_2_grid <- terra::extract(x = dumping_kde, phl_grid)
 
 kde_2_grid_summary <- group_by(kde_2_grid, ID) |> 
@@ -537,19 +681,13 @@ kde_grid <- kde_grid %>%
 
 kde_grid$risk_class <- factor(kde_grid$risk_class, c("Highest", "High", "Mid", "Low", "Lowest"))
 
-tm <- tm_shape(kde_grid) +
-  tm_polygons(col = "risk_class", border.alpha = 0, style = "cont", palette = "-viridis")
-tmap_theme(tm, "Illegal Dumping Risk Class\nKDE")
-```
-
-(Shouldn't matter if we use the whole year bc the comparison is relative, not pred. vs actual)
-```{r 2023 predict}
-preds_net <- preds_net %>%
+### spatial poisson class map------------------------------------------------
+lag_preds_net <- lag_preds_net %>%
               mutate(scaled_risk = rescale(.pred, c(0, 100)))
 
-risk_ints <- classIntervals(preds_net$scaled_risk, style = "quantile", n = 5)
+risk_ints <- classIntervals(lag_preds_net$scaled_risk, style = "quantile", n = 5)
 
-preds_net <- preds_net %>%
+lag_preds_net <- lag_preds_net %>%
               mutate(risk_class = case_when(
                 scaled_risk >= risk_ints$brks[5] ~ "Highest",
                 scaled_risk < risk_ints$brks[5] &  scaled_risk >= risk_ints$brks[4] ~ "High",
@@ -558,13 +696,10 @@ preds_net <- preds_net %>%
                 TRUE ~ "Lowest"
               ))
 
-preds_net$risk_class <- factor(preds_net$risk_class, c("Highest", "High", "Mid", "Low", "Lowest"))
+lag_preds_net$risk_class <- factor(lag_preds_net$risk_class, c("Highest", "High", "Mid", "Low", "Lowest"))
 
-tm <- tm_shape(preds_net) +
-  tm_polygons(col = "risk_class", border.alpha = 0, style = "cat", palette = "-viridis")
-tmap_theme(tm, "Illegal Dumping Risk Class\nSpatial CV")
-```
-```{r recent complains}
+
+### current dumping complaints 2023------------------------------------
 # recent_dumping_query <- sprintf("
 #                   SELECT *
 #                   FROM public_cases_fc
@@ -595,80 +730,145 @@ recent_complaints_net <- st_join(phl_grid, recent_complaints) %>%
                   summarize(count_recent_complaints = sum(count_complaints),
                             count_recent_complaints = ifelse(is.na(count_recent_complaints), 0, count_recent_complaints))
 
-tm <- tm_shape(preds_net) +
-  tm_polygons(col = "risk_class", border.alpha = 0, style = "cat", palette = "-viridis") +
-      tm_shape(slice_sample(recent_complaints, prop = .5)) +
-          tm_dots(col = "white", alpha = 0.2)
-tmap_theme(tm, "Illegal Dumping Risk Class\nSpatial CV")
+### map both-----------------------------------------
+lag_risk_class_map <- tm_shape(lag_preds_net) +
+  tm_polygons(col = "risk_class", border.alpha = 0, style = "cat", palette = "-viridis") %>%
+tmap_theme_minimal("Illegal Dumping Risk Class\nSpatial CV")
 
-tm <- tm_shape(kde_grid) +
-  tm_polygons(col = "risk_class", border.alpha = 0, style = "cont", palette = "-viridis")+
-      tm_shape(slice_sample(recent_complaints, prop = .5)) +
-          tm_dots(col = "white", alpha = 0.2)
-tmap_theme(tm, "Illegal Dumping Risk Class\nKDE")
 
-tm <- tm_shape(recent_complaints_net) +
-  tm_polygons(col = "count_recent_complaints", border.alpha = 0, style = "quantile", palette = "viridis") 
-tmap_theme(tm, "Illegal Dumping in 2023")
+kde_risk_class_map <- tm_shape(kde_grid) +
+  tm_polygons(col = "risk_class", border.alpha = 0, style = "cat", palette = "-viridis") %>%
+    tmap_theme_minimal("Illegal Dumping Risk Class\nKDE")
+
+actual_dumping_map <- tm_shape(recent_complaints_net) +
+  tm_polygons(col = "count_recent_complaints", border.alpha = 0, style = "fisher", palette = "viridis") %>% 
+tmap_theme_minimal("Illegal Dumping in 2023")
+
+tmap_arrange(lag_risk_class_map, kde_risk_class_map, actual_dumping_map, ncol = 3)
+
 ```
-But I found that this was highly dependent on how I define the class breaks for the model. For instance, when I use quantile breaks, SPCV outperforms KDE. But when I use Jenks breaks, the KDe outperforms the SPCV.
 
-Could rewrite this section with rbind and stack the dataframes instead...
-
+We find that the spatial process Poisson model does not meaningfully outperform the KDE predictions when considering 2023 data. This suggests that, without further improvement to the input parameters and the feature engineering, it is not worth the effort to implement this approach rather than a more traditional, straightforward hotspot model using a KDE.
 ```{r 2023 dumping to grids}
-preds_net <- left_join(preds_net, st_drop_geometry(recent_complaints_net))
+lag_preds_net <- left_join(lag_preds_net, st_drop_geometry(recent_complaints_net))
 
-spcv_preds_boxplot <- ggplot(preds_net) +
-  geom_boxplot(aes(x = risk_class, y = count_recent_complaints)) +
-  labs(title = "2023 Illegal Dumping by Predicted Risk",
-       subtitle = "Spatial CV",
-       x = "Risk Class",
-       y = "Actual 2023 Complaints")
+# lag_spcv_preds_boxplot <- ggplot(lag_preds_net) +
+#   geom_boxplot(aes(x = risk_class, y = count_recent_complaints)) +
+#   labs(title = "2023 Illegal Dumping by Predicted Risk",
+#        subtitle = "Spatial CV, Spatial Process Data",
+#        x = "Risk Class",
+#        y = "Actual 2023 Complaints")
 
 
 kde_grid <- left_join(kde_grid, st_drop_geometry(recent_complaints_net))
 
-kde_preds_boxplot <- ggplot(kde_grid) +
-  geom_boxplot(aes(x = risk_class, y = count_recent_complaints)) +
-  labs(title = "2023 Illegal Dumping by Predicted Risk",
-       subtitle = "KDE",
-       x = "Risk Class",
-       y = "Actual 2023 Complaints")
+# kde_preds_boxplot <- ggplot(kde_grid) +
+#   geom_boxplot(aes(x = risk_class, y = count_recent_complaints)) +
+#   labs(title = "2023 Illegal Dumping by Predicted Risk",
+#        subtitle = "KDE",
+#        x = "Risk Class",
+#        y = "Actual 2023 Complaints")
+# 
+# ggarrange(lag_spcv_preds_boxplot, kde_preds_boxplot, ncol = 2)
 
-ggarrange(spcv_preds_boxplot, kde_preds_boxplot, ncol = 2)
-
-preds_net_predicted <- preds_net %>%
+lag_preds_net_predicted <- lag_preds_net %>%
   st_drop_geometry() %>%
   group_by(risk_class) %>%
-  summarize(spcv_tot_dumping = sum(count_recent_complaints)) %>%
-  mutate(spcv_pct_dumping = spcv_tot_dumping / sum(spcv_tot_dumping))
+  summarize(tot_dumping = sum(count_recent_complaints)) %>%
+  mutate(pct_dumping = tot_dumping / sum(tot_dumping),
+         model = "SPCV") %>%
+  select(risk_class, pct_dumping, model)
 
 kde_grid_predicted <-kde_grid %>%
   st_drop_geometry() %>%
   group_by(risk_class) %>%
-  summarize(kde_tot_dumping = sum(count_recent_complaints)) %>%
-  mutate(kde_pct_dumping = kde_tot_dumping / sum(kde_tot_dumping))
+  summarize(tot_dumping = sum(count_recent_complaints)) %>%
+  mutate(pct_dumping = tot_dumping / sum(tot_dumping),
+         model = "KDE") %>%
+  select(risk_class, pct_dumping, model)
 
-predicted_compared <- left_join(preds_net_predicted, kde_grid_predicted)
+predicted_compared <- rbind(lag_preds_net_predicted, kde_grid_predicted)
 
-predicted_compared_long <- predicted_compared %>%
-  select(risk_class, contains("pct_dumping")) %>%
-  pivot_longer(cols = -risk_class,
-               names_to = "model_pct",
-               values_to = "pct_dumping") %>%
-  mutate(model = gsub("_pct_dumping", "", model_pct)) %>%
-  select(-model_pct)
-
-ggplot(predicted_compared_long) +
-  geom_col(aes(x = risk_class, y = pct_dumping, fill = model), position = "dodge")
+ggplot(predicted_compared) +
+  geom_col(aes(x = risk_class, y = pct_dumping * 100, fill = model), position = "dodge") +
+  labs(title = "Risk Prediction (2023 Illegal Dumping)",
+       subtitle = "Spatial Process Poisson Regression vs. KDE",
+       x = "Risk Class",
+       y = "Pct. Dumping",
+       fill = "Model")
 ```
 
+### Generalizability
+The use of spatial cross validation is in itself a means of testing the generalizability of the model across neighborhoods. Given that, even with spatial process accounted for in the data, the spatial cross validation indicates a higher average MAE than regular k-fold cross validation, it is evident that this model does not generalize perfectly across neighborhoods. 
+
+#### Racial Context
+Furthermore, when considering racial context, we note that the model performs worse in minority neighborhoods than in white neighborhoods. This indicates that it does not generalize across racial contexts.
+
+```{r race context}
+phl_acs <- readRDS("Midterm/phl_acs.RData")
+phl_acs <- phl_acs %>%
+              mutate(race_context = ifelse(pctWhite > .5, "Majority White", "Majority Non-White"),
+                     tract_id = 1:n())
+
+acs_intersection <- st_intersection(phl_grid, phl_acs)
+acs_intersection$intersection_area <- st_area(acs_intersection)
+acs_max_intersection <- acs_intersection %>%
+  group_by(grid_id) %>%
+  filter(intersection_area == max(intersection_area)) %>%
+  ungroup() %>%
+  select(grid_id, tract_id) %>%
+  st_drop_geometry()
+
+grid_w_acs <- left_join(phl_grid, acs_max_intersection, by = c("grid_id" = "grid_id")) %>%
+                        st_drop_geometry()
+
+
+cv_race_context_df <- left_join(to_map, grid_w_acs)
+cv_race_context_df <- left_join(cv_race_context_df, st_drop_geometry(phl_acs))
+
+spcv_race_context_df <- left_join(preds_net, grid_w_acs)
+spcv_race_context_df <- left_join(spcv_race_context_df, st_drop_geometry(phl_acs))
+
+lag_cv_race_context_df <- left_join(lag_to_map, grid_w_acs)
+lag_cv_race_context_df <- left_join(lag_cv_race_context_df, st_drop_geometry(phl_acs))
+
+lag_spcv_race_context_df <- left_join(lag_preds_net, grid_w_acs)
+lag_spcv_race_context_df <- left_join(lag_spcv_race_context_df, st_drop_geometry(phl_acs))
+
+mae_x_race_cv <- cv_race_context_df %>%
+  st_drop_geometry() %>%
+  group_by(race_context) %>%
+  summarize(cv_avg_error = mean(abs_error))
+
+mae_x_race_spcv <- spcv_race_context_df %>%
+  st_drop_geometry() %>%
+  group_by(race_context) %>%
+  summarize(spcv_avg_error = mean(abs_error)) 
+
+lag_mae_x_race_cv <- lag_cv_race_context_df %>%
+  st_drop_geometry() %>%
+  group_by(race_context) %>%
+  summarize(lag_cv_avg_error = mean(abs_error))
+
+lag_mae_x_race_spcv <- lag_spcv_race_context_df %>%
+  st_drop_geometry() %>%
+  group_by(race_context) %>%
+  summarize(lag_spcv_avg_error = mean(abs_error)) 
+
+mae_x_race <- left_join(mae_x_race_cv, mae_x_race_spcv)
+mae_x_race <- left_join(mae_x_race, lag_mae_x_race_cv)
+mae_x_race <- left_join(mae_x_race, lag_mae_x_race_spcv)
+
+tm <- tm_shape(cv_race_context_df) +
+  tm_polygons(col = "race_context", border.alpha = 0, style = "cat", palette = "-viridis", textNA = "NA")
+tmap_theme(tm, "Racial Context in Philadelphia")
+
+mae_x_race %>%
+  kbl(caption = "MAE by Race Context and Model") %>%
+  kable_minimal(full_width = F)
+```
 
 ## Conclusion
+Above, we evaluated the effectiveness of a Poisson regression in predicting illegal dumping across Philadelphia. We assessed the utility of incorporating spatial process into our dataset and compared the merits of random k-fold cross validation versus spatial cross validation at the neighborhood level. We evaluated the accuracy and generalizability of all models and found that the model that incorporated spatial process meaningfully outperformed the model that did not. However, spatial cross-validation revealed that the model does not generalize well across neighborhoods. Furthermore, we found that it does not generalize well across racial contexts. Lastly, we compared the model to a more traditional hotspot prediction approach using a kernel density estimate and found that it did not offer much in the way of improvement.
 
-- Model is not especially accurate
-- Does not generalize across racial contexts, and likely not across other contexts, either
-- SPCV indicates significant error due to autocorrelation
-- SPCV also isn't really much of an improvement over KDE, if at all
-- Also seems to be highly sensitive to input parameters such as grid cell size or evaluation parameters like class breaks
-- Overall, too much of the model seems sensitive to too many things, and it does not present a clear improvement over the KDE approach.
+As a result of these findings, we do not recommend that this model be put into production. Given its limited accuracy and generalizability, especially compared to simpler approaches such as a KDE, it is not worth the effort invested. We found, furthermore, that it is highly sensitive to input parameters such as the cell size of the hexagon grid, or the class breaks used to define risk classes for prediction (quantile breaks were more effective at capturing risk than Jenks breaks, despite the skewed distribution of dumping complaints). In the course of our work, we found that other models, such as a regression tree, spatial lag regression, or geographically weighted regression, performed better and may be preferrable, too. In sum, given the sensitivity of the model to input parameters and its limited improvement over simpler approaches, we do not recommend using it.

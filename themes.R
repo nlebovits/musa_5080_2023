@@ -4,6 +4,7 @@ tmap_theme <- function(tm_obj, main_title){
   tm_obj +
     tm_layout(frame = FALSE,
               main.title = main_title,
+              main.title.size = 1,
               legend.outside = TRUE,
               inner.margins = c(0.06, 0.10, 0.10, 0.08)
     ) +
@@ -13,4 +14,14 @@ tmap_theme <- function(tm_obj, main_title){
                color.dark = "gray60", text.color = "gray60",
                position = c("left", "top")) +
     tm_credits("Philadelphia, PA", fontface = "italic", align = "right")
+}
+
+tmap_theme_minimal <- function(tm_obj, main_title){
+  tm_obj +
+    tm_layout(frame = FALSE,
+              main.title = main_title,
+              main.title.size = 1,
+              legend.outside = FALSE,
+              inner.margins = c(0.06, 0.10, 0.10, 0.08)
+    )
 }
