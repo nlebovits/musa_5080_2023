@@ -38,6 +38,8 @@ library(tidymodels)
 library(recipes)
 library(poissonreg)
 library(spatialsample)
+library(kableExtra)
+library(classInt)
 
 source("themes.R")
 
@@ -358,8 +360,7 @@ reg_vars <- c("count_vacant",
 
 reg_data <- full_net %>% 
               dplyr::select(all_of(reg_vars)) %>% 
-              st_point_on_surface() # %>% 
-             #  mutate(across(where(is.numeric), as.integer))
+              st_point_on_surface()
 ```
 
 ```{r cv}
@@ -436,11 +437,9 @@ mae_df <- data.frame(
   mae = c(reg_cv$results$MAE, overall_metrics$mean)
 )
 
-library(kableExtra)
-
 mae_df %>%
   mutate(mae = round(mae, 2)) %>%
-  kbl() %>%
+  kbl(caption = "MAE by Validation Type") %>%
   kable_minimal(full_width = F)
 ```
 
@@ -452,4 +451,218 @@ We noted that cell size had an impact on the accuracy of the model as well; larg
 
 ### Generalizability
 
+#### Racial Context
+Aggregate model errors based on the racial makeup of neighborhoods in Philadelphia indicates that, whether we consider regular cross-fold validation or spatial cross-fold validation, our model performs worse in minority neighborhoods than in white neighborhoods. This indicates that it does not generalize across racial contexts.
+
+```{r race context}
+phl_acs <- readRDS("Midterm/phl_acs.RData")
+phl_acs <- phl_acs %>%
+              mutate(race_context = ifelse(pctWhite > .5, "Majority White", "Majority Non-White"),
+                     tract_id = 1:n())
+
+acs_intersection <- st_intersection(phl_grid, phl_acs)
+acs_intersection$intersection_area <- st_area(acs_intersection)
+acs_max_intersection <- acs_intersection %>%
+  group_by(grid_id) %>%
+  filter(intersection_area == max(intersection_area)) %>%
+  ungroup() %>%
+  select(grid_id, tract_id) %>%
+  st_drop_geometry()
+
+grid_w_acs <- left_join(phl_grid, acs_max_intersection, by = c("grid_id" = "grid_id")) %>%
+                        st_drop_geometry()
+
+
+cv_race_context_df <- left_join(to_map, grid_w_acs)
+cv_race_context_df <- left_join(cv_race_context_df, st_drop_geometry(phl_acs))
+
+spcv_race_context_df <- left_join(preds_net, grid_w_acs)
+spcv_race_context_df <- left_join(spcv_race_context_df, st_drop_geometry(phl_acs))
+
+mae_x_race_cv <- cv_race_context_df %>%
+  st_drop_geometry() %>%
+  group_by(race_context) %>%
+  summarize(cv_avg_error = mean(abs_error))
+
+mae_x_race_spcv <- spcv_race_context_df %>%
+  st_drop_geometry() %>%
+  group_by(race_context) %>%
+  summarize(spcv_avg_error = mean(abs_error)) 
+
+mae_x_race <- left_join(mae_x_race_cv, mae_x_race_spcv)
+
+tm <- tm_shape(cv_race_context_df) +
+  tm_polygons(col = "race_context", border.alpha = 0, style = "cat", palette = "-viridis", textNA = "NA")
+tmap_theme(tm, "Racial Context in Philadelphia")
+
+mae_x_race %>%
+  kbl(caption = "MAE by Race Context and Model") %>%
+  kable_minimal(full_width = F)
+```
+
+Here, we implement a kernel density estimate using an adaptive bandwidth. 
+```{r kde}
+source("R/st_kde.R")
+
+dumping_kde <- st_kde(complaints_sample)
+terra::crs(dumping_kde) <- crs
+dumping_kde_phl <- terra::mask(dumping_kde, phl)
+
+tm <- tm_shape(dumping_kde_phl) +
+  tm_raster(palette = 'viridis', title = "KDE", style = "cont")
+tmap_theme(tm, "Kernel Density Estimate of Illegal Dumping")
+```
+```{r kde to grid}
+kde_2_grid <- terra::extract(x = dumping_kde, phl_grid)
+
+kde_2_grid_summary <- group_by(kde_2_grid, ID) |> 
+  summarize(across(lyr.1, list(min = min, mean = mean, max = max, sum = sum)))
+
+kde_grid <- left_join(phl_grid, kde_2_grid_summary, by = c("grid_id" = "ID"))%>%
+              mutate(scaled_risk = rescale(lyr.1_sum, c(0, 100)))
+
+kde_risk_ints <- classIntervals(kde_grid$scaled_risk, style = "quantile", n = 5)
+
+kde_grid <- kde_grid %>%
+              mutate(risk_class = case_when(
+                scaled_risk >= kde_risk_ints$brks[5] ~ "Highest",
+                scaled_risk < kde_risk_ints$brks[5] &  scaled_risk >= kde_risk_ints$brks[4] ~ "High",
+                scaled_risk < kde_risk_ints$brks[4] &  scaled_risk >= kde_risk_ints$brks[3] ~ "Mid",
+                scaled_risk < kde_risk_ints$brks[3] &  scaled_risk >= kde_risk_ints$brks[2] ~ "Low",
+                TRUE ~ "Lowest"
+              ))
+
+kde_grid$risk_class <- factor(kde_grid$risk_class, c("Highest", "High", "Mid", "Low", "Lowest"))
+
+tm <- tm_shape(kde_grid) +
+  tm_polygons(col = "risk_class", border.alpha = 0, style = "cont", palette = "-viridis")
+tmap_theme(tm, "Illegal Dumping Risk Class\nKDE")
+```
+
+(Shouldn't matter if we use the whole year bc the comparison is relative, not pred. vs actual)
+```{r 2023 predict}
+preds_net <- preds_net %>%
+              mutate(scaled_risk = rescale(.pred, c(0, 100)))
+
+risk_ints <- classIntervals(preds_net$scaled_risk, style = "quantile", n = 5)
+
+preds_net <- preds_net %>%
+              mutate(risk_class = case_when(
+                scaled_risk >= risk_ints$brks[5] ~ "Highest",
+                scaled_risk < risk_ints$brks[5] &  scaled_risk >= risk_ints$brks[4] ~ "High",
+                scaled_risk < risk_ints$brks[4] &  scaled_risk >= risk_ints$brks[3] ~ "Mid",
+                scaled_risk < risk_ints$brks[3] &  scaled_risk >= risk_ints$brks[2] ~ "Low",
+                TRUE ~ "Lowest"
+              ))
+
+preds_net$risk_class <- factor(preds_net$risk_class, c("Highest", "High", "Mid", "Low", "Lowest"))
+
+tm <- tm_shape(preds_net) +
+  tm_polygons(col = "risk_class", border.alpha = 0, style = "cat", palette = "-viridis")
+tmap_theme(tm, "Illegal Dumping Risk Class\nSpatial CV")
+```
+```{r recent complains}
+# recent_dumping_query <- sprintf("
+#                   SELECT *
+#                   FROM public_cases_fc
+#                   WHERE requested_datetime >= '%s'
+#                  ", one_year_ago)
+# 
+# dumping_strings <- c("Illegal Dumping")
+# recent_complaints <- get_complaints(recent_dumping_query, base_url, dumping_strings)
+# 
+# recent_complaints <- recent_complaints |>
+#   mutate(
+#     closed_datetime = ifelse(closed_datetime == "", NA, closed_datetime),
+#     response_time_days = case_when(
+#       is.na(closed_datetime) ~ as.numeric(difftime(Sys.Date(), requested_datetime, units = "days")),
+#       TRUE ~ as.numeric(difftime(
+#         closed_datetime, requested_datetime, units = "days"
+#       ))
+#     ),
+#     count_complaints = 1
+#   )
+
+recent_complaints_path <- "hw3_data/recent_complaints.geojson"
+# saveRDS(recent_complaints, recent_complaints_path)
+recent_complaints <- readRDS(recent_complaints_path)
+
+recent_complaints_net <- st_join(phl_grid, recent_complaints) %>%
+                  group_by(grid_id) %>%
+                  summarize(count_recent_complaints = sum(count_complaints),
+                            count_recent_complaints = ifelse(is.na(count_recent_complaints), 0, count_recent_complaints))
+
+tm <- tm_shape(preds_net) +
+  tm_polygons(col = "risk_class", border.alpha = 0, style = "cat", palette = "-viridis") +
+      tm_shape(slice_sample(recent_complaints, prop = .5)) +
+          tm_dots(col = "white", alpha = 0.2)
+tmap_theme(tm, "Illegal Dumping Risk Class\nSpatial CV")
+
+tm <- tm_shape(kde_grid) +
+  tm_polygons(col = "risk_class", border.alpha = 0, style = "cont", palette = "-viridis")+
+      tm_shape(slice_sample(recent_complaints, prop = .5)) +
+          tm_dots(col = "white", alpha = 0.2)
+tmap_theme(tm, "Illegal Dumping Risk Class\nKDE")
+
+tm <- tm_shape(recent_complaints_net) +
+  tm_polygons(col = "count_recent_complaints", border.alpha = 0, style = "quantile", palette = "viridis") 
+tmap_theme(tm, "Illegal Dumping in 2023")
+```
+But I found that this was highly dependent on how I define the class breaks for the model. For instance, when I use quantile breaks, SPCV outperforms KDE. But when I use Jenks breaks, the KDe outperforms the SPCV.
+```{r 2023 dumping to grids}
+preds_net <- left_join(preds_net, st_drop_geometry(recent_complaints_net))
+
+spcv_preds_boxplot <- ggplot(preds_net) +
+  geom_boxplot(aes(x = risk_class, y = count_recent_complaints)) +
+  labs(title = "2023 Illegal Dumping by Predicted Risk",
+       subtitle = "Spatial CV",
+       x = "Risk Class",
+       y = "Actual 2023 Complaints")
+
+
+kde_grid <- left_join(kde_grid, st_drop_geometry(recent_complaints_net))
+
+kde_preds_boxplot <- ggplot(kde_grid) +
+  geom_boxplot(aes(x = risk_class, y = count_recent_complaints)) +
+  labs(title = "2023 Illegal Dumping by Predicted Risk",
+       subtitle = "KDE",
+       x = "Risk Class",
+       y = "Actual 2023 Complaints")
+
+ggarrange(spcv_preds_boxplot, kde_preds_boxplot, ncol = 2)
+
+preds_net_predicted <- preds_net %>%
+  st_drop_geometry() %>%
+  group_by(risk_class) %>%
+  summarize(spcv_tot_dumping = sum(count_recent_complaints)) %>%
+  mutate(spcv_pct_dumping = spcv_tot_dumping / sum(spcv_tot_dumping))
+
+kde_grid_predicted <-kde_grid %>%
+  st_drop_geometry() %>%
+  group_by(risk_class) %>%
+  summarize(kde_tot_dumping = sum(count_recent_complaints)) %>%
+  mutate(kde_pct_dumping = kde_tot_dumping / sum(kde_tot_dumping))
+
+predicted_compared <- left_join(preds_net_predicted, kde_grid_predicted)
+
+predicted_compared_long <- predicted_compared %>%
+  select(risk_class, contains("pct_dumping")) %>%
+  pivot_longer(cols = -risk_class,
+               names_to = "model_pct",
+               values_to = "pct_dumping") %>%
+  mutate(model = gsub("_pct_dumping", "", model_pct)) %>%
+  select(-model_pct)
+
+ggplot(predicted_compared_long) +
+  geom_col(aes(x = risk_class, y = pct_dumping, fill = model), position = "dodge")
+```
+
+
 ## Conclusion
+
+- Model is not especially accurate
+- Does not generalize across racial contexts, and likely not across other contexts, either
+- SPCV indicates significant error due to autocorrelation
+- SPCV also isn't really much of an improvement over KDE, if at all
+- Also seems to be highly sensitive to input parameters such as grid cell size or evaluation parameters like class breaks
+- Overall, too much of the model seems sensitive to too many things, and it does not present a clear improvement over the KDE approach.
