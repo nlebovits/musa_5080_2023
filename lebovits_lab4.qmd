@@ -1,0 +1,301 @@
+---
+title: "Targeting Housing Subsidies"
+subtitle: "MUSA 508, Lab #4"
+author: "Nissim Lebovits"
+date: today
+project:
+  type: website
+  output-dir: docs
+format: 
+  html:
+    embed-resources: true
+    toc: true
+    theme: flatly
+    code-fold: true
+    code-summary: "Show the code"
+    number-sections: true
+editor: source
+execute:
+  warning: false
+  error: false
+  messages: false
+  echo: true
+  cache: false
+---
+
+## Summary
+```{r setup, set.seed(40)}
+library(tidyverse)
+library(caret)
+library(ggthemr)
+library(pscl)
+library(plotROC)
+library(pROC)
+library(scales)
+
+source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
+
+options(scipen = 999)
+
+ggthemr('pale')
+
+housing_subsidy_path <- "https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/DATA/Chapter6/housingSubsidy.csv"
+housing_subsidy_data <- read.csv(housing_subsidy_path)
+```
+
+
+## Motivation
+One paragraph on the motivation for the analysis.
+
+
+## Methods
+
+### Data
+Develop and interpret data visualizations that describe feature importance/correlation.
+
+Split your data into a 65/35 training/test set.
+The Sensitivity (True Positive Rate) for a model with all the features is very low. Engineer new features that significantly increase the Sensitivity.
+
+Interpret your new features in one paragraph.
+```{r numeric feature viz}
+hmm1 <- housing_subsidy_data %>%
+  pivot_longer(cols = where(is.numeric), names_to = "variable", values_to = "value") %>%
+  filter(variable != "y_numeric")
+
+ggplot(hmm1) +
+  geom_density(aes(x = value, fill = y)) +
+  facet_wrap(~variable, scales = "free") +
+    labs(x="Output Var", y="Density", 
+         title = "Feature associations with the likelihood of entering a program",
+         subtitle = "(Continous outcomes)") +
+  theme(axis.text.x = element_text(hjust = 1, angle = 45))
+
+
+hmm <- hmm1 %>%
+  group_by(variable, y) %>%
+  summarise(mean_value = mean(value, na.rm = TRUE))
+
+ggplot(hmm) +
+  geom_col(aes(y = mean_value, x = y, fill = y)) +
+  facet_wrap(~variable, scales = "free") +
+    labs(x="Output Var", y="Mean Value", 
+         title = "Feature associations with the likelihood of entering a program",
+         subtitle = "(Continous outcomes)")
+```
+
+```{r categorical feature viz}
+hmm2 <- housing_subsidy_data %>%
+  pivot_longer(cols = where(is.character), names_to = "variable", values_to = "value") %>%
+  filter(!variable == "y") %>%
+  select(y_numeric, value, variable) %>%
+  group_by(y_numeric, variable, value) %>%
+  summarize(count = n())
+
+ggplot(hmm2) +
+  geom_col(aes(x = value, y = count, fill = as.factor(y_numeric)), position = "dodge") +
+  facet_wrap(~variable, scales = "free") +
+    labs(x="Output Var", y="Mean Value", 
+         title = "Feature associations with the likelihood of entering a program",
+         subtitle = "(Categorical outcomes)")
+```
+
+We find that the singular occurrence of "illiterate" in our base dataset throws off our model, so we group it in with the "basic.4y" education category as "basic.4y or less".
+```{r munging}
+ggplot(housing_subsidy_data) +
+  geom_bar(aes(x = education)) +
+  theme(axis.text.x = element_text(hjust = 1, angle = 45))
+
+housing_subsidy_data %>%
+  group_by(education) %>%
+  summarize(count = n())
+
+housing_subsidy_data <- housing_subsidy_data %>%
+                          mutate(education = case_when(
+                            education == "basic.4y" ~ "basic.4y or less",
+                            education == "illiterate" ~ "basic.4y or less",
+                            TRUE ~ education
+                          ))
+```
+
+### Model
+```{r model setup}
+trainIndex <- createDataPartition(housing_subsidy_data$y, p = .50,
+                                  list = FALSE,
+                                  times = 1)
+
+houseSubTrain <- housing_subsidy_data[ trainIndex,]
+houseSubTest  <- housing_subsidy_data[-trainIndex,]
+
+hs_reg1 <- glm(y_numeric ~ .,
+                  data= houseSubTrain %>% dplyr::select(
+                                                    -y
+                                                    ),
+                  family="binomial" (link="logit"))
+
+summary(hs_reg1)
+
+pR2(hs_reg1)[4] # mcfadden's R-squared--0.2 to 0.4 are considered good models
+```
+```{r predictions}
+testProbs <- data.frame(outcome = as.factor(houseSubTest$y_numeric),
+                        probs = predict(hs_reg1, houseSubTest, type = "response"))%>%
+                        mutate(pred_outcome  = as.factor(ifelse(probs > 0.5 , 1, 0)))
+
+ggplot(testProbs, aes(x = probs, fill = as.factor(outcome))) + 
+  geom_density(alpha = 0.7) +
+  facet_grid(outcome ~ .) +
+  xlim(0, 1) +
+  labs(x = "Response", y = "Density of probabilities",
+       title = "Distribution of predicted probabilities by observed outcome") +
+  plotTheme() + theme(strip.text.x = element_text(size = 18),
+        legend.position = "none")
+```
+
+```{r confusion matrix}
+caret::confusionMatrix(testProbs$pred_outcome, testProbs$outcome, 
+                       positive = "1")
+```
+## Results
+Show a regression summary for both the kitchen sink and your engineered regression.
+
+### Prediction Accurcay
+Cross validate both models; compare and interpret two facetted plots of ROC, Sensitivity and Specificity.
+```{r cv}
+ctrl <- trainControl(method = "cv", number = 100, classProbs=TRUE, summaryFunction=twoClassSummary)
+
+cvFit <- train(y ~ .,
+                  data= houseSubTrain %>% dplyr::select(
+                                                    -y_numeric
+                                                    ), 
+                method="glm", 
+                family="binomial",
+                metric="ROC", 
+                trControl = ctrl)
+
+cvFit
+```
+```{r cv plots}
+dplyr::select(cvFit$resample, -Resample) %>%
+  gather(metric, value) %>%
+  left_join(gather(cvFit$results[2:4], metric, mean)) %>%
+  ggplot(aes(value)) + 
+    geom_histogram(bins=35, fill = "#FF006A") +
+    facet_wrap(~metric) +
+    geom_vline(aes(xintercept = mean), colour = "#981FAC", linetype = 3, size = 1.5) +
+    scale_x_continuous(limits = c(0, 1)) +
+    labs(x="Goodness of Fit", y="Count", title="CV Goodness of Fit Metrics",
+         subtitle = "Across-fold mean reprented as dotted lines") +
+    plotTheme()
+```
+
+Output an ROC curve for your new model and interpret it.
+```{r roc}
+auc <- round(pROC::auc(testProbs$outcome, testProbs$probs), 3)
+roc_subtitle = paste0("AUC: ", auc)
+  
+ggplot(testProbs, aes(d = as.numeric(outcome), m = probs)) +
+  geom_roc(n.cuts = 50, labels = FALSE, colour = "#FE9900") +
+  style_roc(theme = theme_grey) +
+  geom_abline(slope = 1, intercept = 0, size = 1.5, color = 'grey') +
+  labs(title = "ROC Curve - hs_reg1",
+       subtitle = roc_subtitle )
+```
+
+### Cost-Benefit Analysis
+Develop a cost benefit analysis.
+
+(This needs to be updated.)
+```{r cost benefit table}
+cost_benefit_table <-
+   testProbs %>%
+      count(pred_outcome, outcome) %>%
+      summarize(True_Negative = sum(n[pred_outcome==0 & outcome==0]),
+                True_Positive = sum(n[pred_outcome==1 & outcome==1]),
+                False_Negative = sum(n[pred_outcome==0 & outcome==1]),
+                False_Positive = sum(n[pred_outcome==1 & outcome==0])) %>%
+       gather(Variable, Count) %>%
+       mutate(Revenue =
+               case_when(Variable == "True_Negative"  ~ Count * 30,
+                         Variable == "True_Positive"  ~ ((30 - 8) * (Count * .50)) + 
+                                                        (-32 * (Count * .50)),
+                         Variable == "False_Negative" ~ (-30) * Count,
+                         Variable == "False_Positive" ~ (30 - 8) * Count)) %>%
+    bind_cols(data.frame(Description = c(
+              "We predicted no churn and did not send a mailer",
+              "We predicted churn and sent the mailer",
+              "We predicted no churn and the customer churned",
+              "We predicted churn and the customer did not churn")))
+
+cost_benefit_table
+```
+
+```{r thresholds}
+whichThreshold <- 
+  iterateThresholds(
+     data=testProbs, observedClass = outcome, predictedProbs = probs)
+
+whichThreshold[1:5,]
+
+whichThreshold <- 
+  whichThreshold %>%
+    dplyr::select(starts_with("Count"), Threshold) %>%
+    gather(Variable, Count, -Threshold) %>%
+    mutate(Revenue =
+             case_when(Variable == "Count_TN"  ~ Count * 30,
+                       Variable == "Count_TP"  ~ ((30 - 8) * (Count * .50)) +
+                                                 (-32 * (Count * .50)),
+                       Variable == "Count_FN"  ~ (-30) * Count,
+                       Variable == "Count_FP"  ~ (30 - 8) * Count))
+
+whichThreshold %>%
+  ggplot(.,aes(Threshold, Revenue, colour = Variable)) +
+  geom_point() +
+  # scale_colour_manual(values = palette5[c(5, 1:3)]) +    
+  labs(title = "Revenue by confusion matrix type and threshold",
+       y = "Revenue") +
+  plotTheme() +
+  guides(colour=guide_legend(title = "Confusion Matrix")) 
+```
+
+Write out the cost/benefit equation for each confusion metric.
+
+Create the ‘Cost/Benefit Table’ as seen above.
+
+Plot the confusion metric outcomes for each Threshold.
+
+Create two small multiple plots that show Threshold as a function of Total_Revenue and Total_Count_of_Credits. Interpret this.
+Create a table of the Total_Revenue and Total_Count_of_Credits allocated for 2 categories. 50%_Threshold and your Optimal_Threshold.
+
+```{r thresh tab}
+whichThreshold_revenue <- 
+  whichThreshold %>% 
+    mutate(actualChurn = ifelse(Variable == "Count_TP", (Count * .5),
+                         ifelse(Variable == "Count_FN", Count, 0))) %>% 
+    group_by(Threshold) %>% 
+    summarize(Revenue = sum(Revenue),
+              Actual_Churn_Rate = sum(actualChurn) / sum(Count),
+              Actual_Churn_Revenue_Loss =  sum(actualChurn * 30),
+              Revenue_Next_Period = Revenue - Actual_Churn_Revenue_Loss) 
+
+whichThreshold_revenue[1:5,]
+```
+```{r revenue}
+whichThreshold_revenue %>%
+  dplyr::select(Threshold, Revenue, Revenue_Next_Period) %>%
+  gather(Variable, Value, -Threshold) %>%
+  ggplot(aes(Threshold, Value, colour = Variable)) +
+    geom_point() +
+    geom_vline(xintercept = pull(arrange(whichThreshold_revenue, -Revenue)[1,1])) +
+   # scale_colour_manual(values = palette2) +
+    plotTheme() + ylim(0,70000) +
+    labs(title = "Revenue this pay period and the next by threshold",
+         subtitle = "Assuming no new customers added next period. Vertical line denotes optimal threshold")
+```
+
+
+## Discussion
+
+## Conclusion
+Conclude whether and why this model should or shouldn’t be put into production. What could make the model better? What would you do to ensure that the marketing materials resulted in a better response rate?
+
+
