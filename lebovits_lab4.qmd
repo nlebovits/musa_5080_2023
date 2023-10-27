@@ -23,6 +23,32 @@ execute:
   cache: false
 ---
 
+Some things to check for:
+
+- balanced data in train/test split (need to figure this out)
+- compare it to a random forest classifier
+- scale data
+- try glmnet (penalized/lasso regression)
+
+So we want:
+
+- one kitchen sink model
+- one model that is scaled, log transformed where applicable, has correlation removed, and removes non-significant predictors
+
+
+How to account for class imbalance in our dataset?
+
+Based on crosstab, drop the following categorical variables:
+
+- poutcome
+- day of the week
+- taxbill_in_phl
+- mortgage
+
+Create binary for university degree
+
+Also drop unemployment rate and inflation rate due to high correlation with other vars
+
 ## Summary
 ```{r setup, set.seed(40)}
 library(tidyverse)
@@ -32,6 +58,9 @@ library(pscl)
 library(plotROC)
 library(pROC)
 library(scales)
+library(rstatix)
+library(ggpubr)
+library(kableExtra)
 
 source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
 
@@ -41,6 +70,34 @@ ggthemr('pale')
 
 housing_subsidy_path <- "https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/DATA/Chapter6/housingSubsidy.csv"
 housing_subsidy_data <- read.csv(housing_subsidy_path)
+# log transform previous, pdays, and campagin
+
+drop_vars <- c("mortgage", 
+               "taxbill_in_phl", 
+               "day_of_week", 
+               "education", 
+               "inflation_rate",
+               "unemploy_rate", 
+               "previous", 
+               "X", 
+               "age")  
+  
+hs_data_eng <- housing_subsidy_data %>%
+  # mutate(
+  #   campaign = log(campaign,
+  #   pdays = log(pdays + 0.001),
+  #   previous = log(previous+ 0.001)
+  #) %>%
+  mutate(across(where(is.numeric), scale)) %>%
+  mutate(
+         y_numeric = ifelse(y_numeric < 0, 0, 1),
+         univ_deg = education == "university.degree",
+         taxLien = case_when(
+                            taxLien == "yes" ~ "unknown/yes",
+                            taxLien == "unknown" ~ "unknown/yes",
+                            TRUE ~ taxLien
+                          )) %>%
+  select(-c(drop_vars))
 ```
 
 
@@ -52,6 +109,49 @@ One paragraph on the motivation for the analysis.
 
 ### Data
 Develop and interpret data visualizations that describe feature importance/correlation.
+
+```{r corrplot}
+library(ggcorrplot)
+
+corr <- round(cor(housing_subsidy_data %>% select(where(is.numeric))), 1)
+p.mat <- cor_pmat(housing_subsidy_data %>% select(where(is.numeric)))
+
+ggcorrplot(corr, p.mat = p.mat, hc.order = TRUE,
+    type = "lower", insig = "blank", lab = TRUE)
+```
+
+```{r ttests}
+#| tbl-cap: T-Tests for Continuous Variables
+
+
+ttest <- housing_subsidy_data %>%
+  pivot_longer(cols = where(is.numeric), names_to = "variable", values_to = "value") %>%
+  filter(variable != "y_numeric") %>%
+  group_by(variable) %>%
+  t_test(value ~ y) %>%
+  adjust_pvalue(method = "BH") %>%
+  add_significance() %>%
+  select(variable,
+         p,
+         p.adj,
+         p.adj.signif)
+
+ttest %>%
+  kbl() %>%
+  kable_minimal()
+```
+
+```{r crosstabs}
+#| tbl-cap: Cross Tabulation of Categorical Variables
+
+library(crosstable)
+
+cat_vars <- colnames(housing_subsidy_data %>% select(where(is.character)))
+
+crosstable(housing_subsidy_data, cat_vars, by=y, total="both", 
+                 percent_pattern="{n} ({p_row}/{p_col})", percent_digits=0, test = TRUE) %>%
+  as_flextable()
+```
 
 Split your data into a 65/35 training/test set.
 The Sensitivity (True Positive Rate) for a model with all the features is very low. Engineer new features that significantly increase the Sensitivity.
@@ -91,12 +191,20 @@ hmm2 <- housing_subsidy_data %>%
   group_by(y_numeric, variable, value) %>%
   summarize(count = n())
 
+hmm_counts <- hmm2 %>%
+                group_by(y_numeric, variable) %>%
+                summarize(total = sum(count))
+
+hmm2 <- left_join(hmm2, hmm_counts) %>%
+            mutate(pct = count/total*100)
+
 ggplot(hmm2) +
-  geom_col(aes(x = value, y = count, fill = as.factor(y_numeric)), position = "dodge") +
+  geom_col(aes(x = value, y = pct, fill = as.factor(y_numeric)), position = "dodge") +
   facet_wrap(~variable, scales = "free") +
     labs(x="Output Var", y="Mean Value", 
          title = "Feature associations with the likelihood of entering a program",
-         subtitle = "(Categorical outcomes)")
+         subtitle = "(Categorical outcomes)") +
+  theme(axis.text.x = element_text(hjust = 1, angle = 45))
 ```
 
 We find that the singular occurrence of "illiterate" in our base dataset throws off our model, so we group it in with the "basic.4y" education category as "basic.4y or less".
@@ -115,70 +223,102 @@ housing_subsidy_data <- housing_subsidy_data %>%
                             education == "illiterate" ~ "basic.4y or less",
                             TRUE ~ education
                           ))
+
+housing_subsidy_data %>%
+  group_by(taxLien) %>%
+  summarize(count = n())
 ```
+
+Likewise, we find that the singular occurrence of "yes" in our base dataset throws off our model, so we group it in with the "unknown" tax lien category as "unknown/yes".
+```{r munging 2}
+ggplot(housing_subsidy_data) +
+  geom_bar(aes(x = taxLien)) +
+  theme(axis.text.x = element_text(hjust = 1, angle = 45))
+
+housing_subsidy_data %>%
+  group_by(taxLien) %>%
+  summarize(count = n())
+
+housing_subsidy_data <- housing_subsidy_data %>%
+                          mutate(taxLien = case_when(
+                            taxLien == "yes" ~ "unknown/yes",
+                            taxLien == "unknown" ~ "unknown/yes",
+                            TRUE ~ taxLien
+                          ))
+```
+
 
 ### Model
-```{r model setup}
-trainIndex <- createDataPartition(housing_subsidy_data$y, p = .50,
-                                  list = FALSE,
-                                  times = 1)
+```{r model and eval fn}
+library(rsample)
+library(glmnet)
 
-houseSubTrain <- housing_subsidy_data[ trainIndex,]
-houseSubTest  <- housing_subsidy_data[-trainIndex,]
+fit_model <- function(type) {
+  
+  data_for_model <- houseSubTrain %>% dplyr::select(-y)
+  
+  if (type == "regular") {
+    model <- glm(y_numeric ~ ., data = data_for_model, family = binomial(link = "logit"))
+  } else if (type == "lasso") {
+    model_matrix <- model.matrix(y_numeric ~ . - 1, data = data_for_model)
+    model <- glmnet(model_matrix, houseSubTrain$y_numeric, family = "binomial", alpha = 1, lambda = NULL)
+  } else {
+    stop("Invalid type specified. Choose either 'regular' or 'lasso'.")
+  }
+  
+  return(model)
+}
 
-hs_reg1 <- glm(y_numeric ~ .,
-                  data= houseSubTrain %>% dplyr::select(
-                                                    -y
-                                                    ),
-                  family="binomial" (link="logit"))
 
-summary(hs_reg1)
+model_and_eval <- function(data, type) {
+  
+trainIndex <- initial_split(data, prop = 0.50, strata = y)
+houseSubTrain <- training(trainIndex)
+houseSubTest  <-  testing(trainIndex)
 
-pR2(hs_reg1)[4] # mcfadden's R-squared--0.2 to 0.4 are considered good models
-```
-```{r predictions}
+data_for_model <- houseSubTrain %>% dplyr::select(-y)
+
+hs_reg <- glm(y_numeric ~ ., data = data_for_model, family = binomial(link = "logit"))
+
+print(summary(hs_reg))
+
+print(pR2(hs_reg)[4]) # mcfadden's R-squared--0.2 to 0.4 are considered good model
+
 testProbs <- data.frame(outcome = as.factor(houseSubTest$y_numeric),
-                        probs = predict(hs_reg1, houseSubTest, type = "response"))%>%
+                        probs = predict(hs_reg, houseSubTest, type = "response"))%>%
                         mutate(pred_outcome  = as.factor(ifelse(probs > 0.5 , 1, 0)))
 
-ggplot(testProbs, aes(x = probs, fill = as.factor(outcome))) + 
+print(ggplot(testProbs, aes(x = probs, fill = as.factor(outcome))) +
   geom_density(alpha = 0.7) +
   facet_grid(outcome ~ .) +
   xlim(0, 1) +
   labs(x = "Response", y = "Density of probabilities",
        title = "Distribution of predicted probabilities by observed outcome") +
   plotTheme() + theme(strip.text.x = element_text(size = 18),
-        legend.position = "none")
-```
+        legend.position = "none"))
 
-```{r confusion matrix}
-caret::confusionMatrix(testProbs$pred_outcome, testProbs$outcome, 
-                       positive = "1")
-```
-## Results
-Show a regression summary for both the kitchen sink and your engineered regression.
+print(caret::confusionMatrix(testProbs$pred_outcome, testProbs$outcome,
+                       positive = "1"))
 
-### Prediction Accurcay
-Cross validate both models; compare and interpret two facetted plots of ROC, Sensitivity and Specificity.
-```{r cv}
 ctrl <- trainControl(method = "cv", number = 100, classProbs=TRUE, summaryFunction=twoClassSummary)
 
 cvFit <- train(y ~ .,
                   data= houseSubTrain %>% dplyr::select(
                                                     -y_numeric
-                                                    ), 
-                method="glm", 
+                                                    ),
+                method="glm",
                 family="binomial",
-                metric="ROC", 
+                metric="ROC",
                 trControl = ctrl)
 
 cvFit
-```
-```{r cv plots}
-dplyr::select(cvFit$resample, -Resample) %>%
+
+
+print(
+  dplyr::select(cvFit$resample, -Resample) %>%
   gather(metric, value) %>%
   left_join(gather(cvFit$results[2:4], metric, mean)) %>%
-  ggplot(aes(value)) + 
+  ggplot(aes(value)) +
     geom_histogram(bins=35, fill = "#FF006A") +
     facet_wrap(~metric) +
     geom_vline(aes(xintercept = mean), colour = "#981FAC", linetype = 3, size = 1.5) +
@@ -186,26 +326,21 @@ dplyr::select(cvFit$resample, -Resample) %>%
     labs(x="Goodness of Fit", y="Count", title="CV Goodness of Fit Metrics",
          subtitle = "Across-fold mean reprented as dotted lines") +
     plotTheme()
-```
+)
 
-Output an ROC curve for your new model and interpret it.
-```{r roc}
 auc <- round(pROC::auc(testProbs$outcome, testProbs$probs), 3)
 roc_subtitle = paste0("AUC: ", auc)
-  
+
+print(
+
 ggplot(testProbs, aes(d = as.numeric(outcome), m = probs)) +
   geom_roc(n.cuts = 50, labels = FALSE, colour = "#FE9900") +
   style_roc(theme = theme_grey) +
   geom_abline(slope = 1, intercept = 0, size = 1.5, color = 'grey') +
-  labs(title = "ROC Curve - hs_reg1",
+  labs(title = "ROC Curve",
        subtitle = roc_subtitle )
-```
+)
 
-### Cost-Benefit Analysis
-Develop a cost benefit analysis.
-
-(This needs to be updated.)
-```{r cost benefit table}
 cost_benefit_table <-
    testProbs %>%
       count(pred_outcome, outcome) %>%
@@ -216,7 +351,7 @@ cost_benefit_table <-
        gather(Variable, Count) %>%
        mutate(Revenue =
                case_when(Variable == "True_Negative"  ~ Count * 30,
-                         Variable == "True_Positive"  ~ ((30 - 8) * (Count * .50)) + 
+                         Variable == "True_Positive"  ~ ((30 - 8) * (Count * .50)) +
                                                         (-32 * (Count * .50)),
                          Variable == "False_Negative" ~ (-30) * Count,
                          Variable == "False_Positive" ~ (30 - 8) * Count)) %>%
@@ -226,17 +361,15 @@ cost_benefit_table <-
               "We predicted no churn and the customer churned",
               "We predicted churn and the customer did not churn")))
 
-cost_benefit_table
-```
+print(cost_benefit_table)
 
-```{r thresholds}
-whichThreshold <- 
+whichThreshold <-
   iterateThresholds(
      data=testProbs, observedClass = outcome, predictedProbs = probs)
 
 whichThreshold[1:5,]
 
-whichThreshold <- 
+whichThreshold <-
   whichThreshold %>%
     dplyr::select(starts_with("Count"), Threshold) %>%
     gather(Variable, Count, -Threshold) %>%
@@ -247,39 +380,30 @@ whichThreshold <-
                        Variable == "Count_FN"  ~ (-30) * Count,
                        Variable == "Count_FP"  ~ (30 - 8) * Count))
 
+print(
 whichThreshold %>%
   ggplot(.,aes(Threshold, Revenue, colour = Variable)) +
   geom_point() +
-  # scale_colour_manual(values = palette5[c(5, 1:3)]) +    
+  # scale_colour_manual(values = palette5[c(5, 1:3)]) +
   labs(title = "Revenue by confusion matrix type and threshold",
        y = "Revenue") +
   plotTheme() +
-  guides(colour=guide_legend(title = "Confusion Matrix")) 
-```
+  guides(colour=guide_legend(title = "Confusion Matrix"))
+)
 
-Write out the cost/benefit equation for each confusion metric.
-
-Create the ‘Cost/Benefit Table’ as seen above.
-
-Plot the confusion metric outcomes for each Threshold.
-
-Create two small multiple plots that show Threshold as a function of Total_Revenue and Total_Count_of_Credits. Interpret this.
-Create a table of the Total_Revenue and Total_Count_of_Credits allocated for 2 categories. 50%_Threshold and your Optimal_Threshold.
-
-```{r thresh tab}
-whichThreshold_revenue <- 
-  whichThreshold %>% 
+whichThreshold_revenue <-
+  whichThreshold %>%
     mutate(actualChurn = ifelse(Variable == "Count_TP", (Count * .5),
-                         ifelse(Variable == "Count_FN", Count, 0))) %>% 
-    group_by(Threshold) %>% 
+                         ifelse(Variable == "Count_FN", Count, 0))) %>%
+    group_by(Threshold) %>%
     summarize(Revenue = sum(Revenue),
               Actual_Churn_Rate = sum(actualChurn) / sum(Count),
               Actual_Churn_Revenue_Loss =  sum(actualChurn * 30),
-              Revenue_Next_Period = Revenue - Actual_Churn_Revenue_Loss) 
+              Revenue_Next_Period = Revenue - Actual_Churn_Revenue_Loss)
 
-whichThreshold_revenue[1:5,]
-```
-```{r revenue}
+print(whichThreshold_revenue[1:5,])
+
+print(
 whichThreshold_revenue %>%
   dplyr::select(Threshold, Revenue, Revenue_Next_Period) %>%
   gather(Variable, Value, -Threshold) %>%
@@ -290,7 +414,44 @@ whichThreshold_revenue %>%
     plotTheme() + ylim(0,70000) +
     labs(title = "Revenue this pay period and the next by threshold",
          subtitle = "Assuming no new customers added next period. Vertical line denotes optimal threshold")
+)
+
+}
 ```
+
+```{r model 1 setup}
+model_and_eval(housing_subsidy_data, "regular")
+```
+
+```{r model 2 setup}
+model_and_eval(hs_data_eng, "lasso")
+```
+
+## Results
+Show a regression summary for both the kitchen sink and your engineered regression.
+
+### Prediction Accurcay
+Cross validate both models; compare and interpret two facetted plots of ROC, Sensitivity and Specificity.
+
+
+Output an ROC curve for your new model and interpret it.
+
+
+### Cost-Benefit Analysis
+Develop a cost benefit analysis.
+
+(This needs to be updated.)
+
+
+Write out the cost/benefit equation for each confusion metric.
+
+Create the ‘Cost/Benefit Table’ as seen above.
+
+Plot the confusion metric outcomes for each Threshold.
+
+Create two small multiple plots that show Threshold as a function of Total_Revenue and Total_Count_of_Credits. Interpret this.
+Create a table of the Total_Revenue and Total_Count_of_Credits allocated for 2 categories. 50%_Threshold and your Optimal_Threshold.
+
 
 
 ## Discussion
