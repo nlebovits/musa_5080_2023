@@ -61,6 +61,11 @@ library(scales)
 library(rstatix)
 library(ggpubr)
 library(kableExtra)
+library(randomForest)
+library(crosstable)
+library(ggcorrplot)
+library(crosstable)
+library(rsample)
 
 source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
 
@@ -72,46 +77,74 @@ housing_subsidy_path <- "https://raw.githubusercontent.com/urbanSpatial/Public-P
 housing_subsidy_data <- read.csv(housing_subsidy_path)
 # log transform previous, pdays, and campagin
 
+
+housing_subsidy_data <- housing_subsidy_data %>%
+                          mutate(education = case_when(
+                            education == "basic.4y" ~ "basic.4y or less",
+                            education == "illiterate" ~ "basic.4y or less",
+                            TRUE ~ education
+                          ))
+
+housing_subsidy_data <- housing_subsidy_data %>%
+                          mutate(taxLien = case_when(
+                            taxLien == "yes" ~ "unknown/yes",
+                            taxLien == "unknown" ~ "unknown/yes",
+                            TRUE ~ taxLien
+                          ))
+
+
 drop_vars <- c("mortgage", 
                "taxbill_in_phl", 
                "day_of_week", 
                "education", 
-               "inflation_rate",
+              # "inflation_rate",
                "unemploy_rate", 
-               "previous", 
-               "X", 
-               "age")  
-  
+              # "previous", 
+               "X"# , 
+              # "age"
+               )  
+
 hs_data_eng <- housing_subsidy_data %>%
-  # mutate(
-  #   campaign = log(campaign,
-  #   pdays = log(pdays + 0.001),
-  #   previous = log(previous+ 0.001)
-  #) %>%
-  mutate(across(where(is.numeric), scale)) %>%
   mutate(
-         y_numeric = ifelse(y_numeric < 0, 0, 1),
-         univ_deg = education == "university.degree",
-         taxLien = case_when(
-                            taxLien == "yes" ~ "unknown/yes",
-                            taxLien == "unknown" ~ "unknown/yes",
-                            TRUE ~ taxLien
-                          )) %>%
+    #campaign = log(campaign),
+    cci_peak_50_indicator = ifelse(cons.conf.idx >= -51 & cons.conf.idx <= -49, 1, 0),
+    cci_peak_40_indicator = ifelse(cons.conf.idx >= -41 & cons.conf.idx <= -39, 1, 0),
+    cci_peak_35_indicator = ifelse(cons.conf.idx >= -36 & cons.conf.idx <= -34, 1, 0),
+    cpi_peak_92_5_indicator = ifelse(cons.price.idx >= 92.3 & cons.price.idx <= 92.7, 1, 0),
+    cpi_peak_93_5_indicator = ifelse(cons.price.idx >= 93.3 & cons.price.idx <= 93.7, 1, 0),
+    cpi_peak_94_5_indicator = ifelse(cons.price.idx >= 94.3 & cons.price.idx <= 94.7, 1, 0),
+    ir_peak_1_5_indicator = ifelse(inflation_rate >= 1.3 & inflation_rate <= 1.7, 1, 0),
+    ir_peak_4_5_indicator = ifelse(inflation_rate >= 4.3 & inflation_rate <= 4.7, 1, 0),
+    sor_peak_5025_indicator = ifelse(spent_on_repairs >= 5020 & spent_on_repairs <= 5030, 1, 0),
+    sor_peak_5075_indicator = ifelse(spent_on_repairs >= 5070 & spent_on_repairs <= 5080, 1, 0),
+    sor_peak_5110_indicator = ifelse(spent_on_repairs >= 5105 & spent_on_repairs <= 5115, 1, 0),
+    sor_peak_5175_indicator = ifelse(spent_on_repairs >= 5170 & spent_on_repairs <= 5180, 1, 0),
+    ir_peak_1_5_indicator = ifelse(inflation_rate >= 1.3 & inflation_rate <= 1.7, 1, 0),
+    ir_peak_4_5_indicator = ifelse(inflation_rate >= 4.3 & inflation_rate <= 4.7, 1, 0),
+    ur_peak_4_5_indicator = ifelse(unemploy_rate >= 4.3 & unemploy_rate <= 4.7, 1, 0),
+    univ_deg = ifelse(education == "university.degree", 1, 0),
+    pdays_special = ifelse(pdays >= 999, 1, 0),
+    has_previous_contact = ifelse(previous > 0, 1, 0)
+    ) %>%
   select(-c(drop_vars))
+
+
 ```
 
 
 ## Motivation
-One paragraph on the motivation for the analysis.
+Emil City is considering a more proactive approach for targeting home owners who qualify for a home repair tax credit program. This tax credit program has been around for close to twenty years, and while the Department of Housing and Community Development (HCD) tries to proactively reach out to eligible homeowners ever year, the uptake of the credit is woefully inadequate. Typically not all eligible homeowners they reach out to who enter the program ultimately take the credit.
+
+The consensus at HCD is that the low conversion rate is due to the fact that the agency reaches out to eligible homeowners at random. To move toward a more targeted campaign, we attempt to use a binomial logistic regression to assess whether client-level data collected from previous campaigns can drive decision-making to better target limited outreach sources and approve the success rates in getting homeowners into the home repair tax credit program.
 
 
 ## Methods
-
 ### Data
-Develop and interpret data visualizations that describe feature importance/correlation.
+For this analysis, we use historic data collected by Emil City. To start, we assess the relationship of the various potential predictors to our dependent variable, `y`, and the relationship of the predictors to each other. We do this using a correlation plot, t-tests (for continuous variables), and chi-squared tests (for categorical variables). We are looking for variables that 1) have a statistically significant relationship with our dependent variable, `y`, and 2) do not exhibit strong multicolinearity with each other. We will first run a logistic regression on our full dataset and then, using these analytic tools, attempt to eliminate unhelpful features and/or engineer more helpful ones to create the most parsimonous model which maximizes the cost-benefits tradeoffs of the outreach approach.
 
+#### Multicolinearity
+Using a correlation plot, we can assess which predictors are multicolinear and therefore should be removed from our model. For our purposes, we define strong multicolinearity as anything with an r-value of greater than 0.9 or less than -0.9, which signals a redundancy in including both predictors (in other words, adding the second one does not help improve the predictive power of the model). In the case of multicollinearity, we usually leave one predictor and take out the rest that are strongly correlated with that one predictor. Here, we only drop two predictors: inflation rate and unemployment rate.
 ```{r corrplot}
-library(ggcorrplot)
 
 corr <- round(cor(housing_subsidy_data %>% select(where(is.numeric))), 1)
 p.mat <- cor_pmat(housing_subsidy_data %>% select(where(is.numeric)))
@@ -119,16 +152,16 @@ p.mat <- cor_pmat(housing_subsidy_data %>% select(where(is.numeric)))
 ggcorrplot(corr, p.mat = p.mat, hc.order = TRUE,
     type = "lower", insig = "blank", lab = TRUE)
 ```
-
+#### T-Tests for Continuous Variables
+Using t-tests, we can assess whether continuous predictors differ across the two classes of the dependent variable in a statistically significant way. If they do, they are useful predictors for our model, but if they do not, they do not contribute meaningfully to the model. Based on these t-tests, we find that one of our continuous variables, `X`, is shows no statistically significant difference across classes and therefore can be discarded.
 ```{r ttests}
 #| tbl-cap: T-Tests for Continuous Variables
-
 
 ttest <- housing_subsidy_data %>%
   pivot_longer(cols = where(is.numeric), names_to = "variable", values_to = "value") %>%
   filter(variable != "y_numeric") %>%
   group_by(variable) %>%
-  t_test(value ~ y) %>%
+  rstatix::t_test(value ~ y) %>%
   adjust_pvalue(method = "BH") %>%
   add_significance() %>%
   select(variable,
@@ -141,15 +174,20 @@ ttest %>%
   kable_minimal()
 ```
 
+#### Chi-Squared Tests for Categorical Predictors
+Similarly, we can use chi-squared tests to assess whether categorical predictors show statistically signficant differences across the classes of the dependent variable. Based on these tests, we drop four predictors: "mortgage", "taxbill_in_phl", "day_of_week", and "education".
 ```{r crosstabs}
 #| tbl-cap: Cross Tabulation of Categorical Variables
 
-library(crosstable)
-
 cat_vars <- colnames(housing_subsidy_data %>% select(where(is.character)))
 
-crosstable(housing_subsidy_data, cat_vars, by=y, total="both", 
-                 percent_pattern="{n} ({p_row}/{p_col})", percent_digits=0, test = TRUE) %>%
+crosstable(housing_subsidy_data, 
+           cat_vars, 
+           by=y, 
+           total="both", 
+           percent_pattern="{n} ({p_row}/{p_col})", 
+           percent_digits=0, 
+           test = TRUE) %>%
   as_flextable()
 ```
 
@@ -183,6 +221,7 @@ ggplot(hmm) +
          subtitle = "(Continous outcomes)")
 ```
 
+
 ```{r categorical feature viz}
 hmm2 <- housing_subsidy_data %>%
   pivot_longer(cols = where(is.character), names_to = "variable", values_to = "value") %>%
@@ -208,71 +247,18 @@ ggplot(hmm2) +
 ```
 
 We find that the singular occurrence of "illiterate" in our base dataset throws off our model, so we group it in with the "basic.4y" education category as "basic.4y or less".
-```{r munging}
-ggplot(housing_subsidy_data) +
-  geom_bar(aes(x = education)) +
-  theme(axis.text.x = element_text(hjust = 1, angle = 45))
 
-housing_subsidy_data %>%
-  group_by(education) %>%
-  summarize(count = n())
-
-housing_subsidy_data <- housing_subsidy_data %>%
-                          mutate(education = case_when(
-                            education == "basic.4y" ~ "basic.4y or less",
-                            education == "illiterate" ~ "basic.4y or less",
-                            TRUE ~ education
-                          ))
-
-housing_subsidy_data %>%
-  group_by(taxLien) %>%
-  summarize(count = n())
-```
 
 Likewise, we find that the singular occurrence of "yes" in our base dataset throws off our model, so we group it in with the "unknown" tax lien category as "unknown/yes".
-```{r munging 2}
-ggplot(housing_subsidy_data) +
-  geom_bar(aes(x = taxLien)) +
-  theme(axis.text.x = element_text(hjust = 1, angle = 45))
-
-housing_subsidy_data %>%
-  group_by(taxLien) %>%
-  summarize(count = n())
-
-housing_subsidy_data <- housing_subsidy_data %>%
-                          mutate(taxLien = case_when(
-                            taxLien == "yes" ~ "unknown/yes",
-                            taxLien == "unknown" ~ "unknown/yes",
-                            TRUE ~ taxLien
-                          ))
-```
-
 
 ### Model
 ```{r model and eval fn}
-library(rsample)
-library(glmnet)
 
-fit_model <- function(type) {
-  
-  data_for_model <- houseSubTrain %>% dplyr::select(-y)
-  
-  if (type == "regular") {
-    model <- glm(y_numeric ~ ., data = data_for_model, family = binomial(link = "logit"))
-  } else if (type == "lasso") {
-    model_matrix <- model.matrix(y_numeric ~ . - 1, data = data_for_model)
-    model <- glmnet(model_matrix, houseSubTrain$y_numeric, family = "binomial", alpha = 1, lambda = NULL)
-  } else {
-    stop("Invalid type specified. Choose either 'regular' or 'lasso'.")
-  }
-  
-  return(model)
-}
+set.seed(42)
 
-
-model_and_eval <- function(data, type) {
+model_and_eval <- function(data) {
   
-trainIndex <- initial_split(data, prop = 0.50, strata = y)
+trainIndex <- initial_split(data, prop = 0.65, strata = y)
 houseSubTrain <- training(trainIndex)
 houseSubTest  <-  testing(trainIndex)
 
@@ -350,16 +336,15 @@ cost_benefit_table <-
                 False_Positive = sum(n[pred_outcome==1 & outcome==0])) %>%
        gather(Variable, Count) %>%
        mutate(Revenue =
-               case_when(Variable == "True_Negative"  ~ Count * 30,
-                         Variable == "True_Positive"  ~ ((30 - 8) * (Count * .50)) +
-                                                        (-32 * (Count * .50)),
-                         Variable == "False_Negative" ~ (-30) * Count,
-                         Variable == "False_Positive" ~ (30 - 8) * Count)) %>%
+               case_when(Variable == "True_Negative"  ~ 0,
+                         Variable == "True_Positive"  ~ 12400 * Count,
+                         Variable == "False_Negative" ~ 0,
+                         Variable == "False_Positive" ~  Count * -2850)) %>%
     bind_cols(data.frame(Description = c(
-              "We predicted no churn and did not send a mailer",
-              "We predicted churn and sent the mailer",
-              "We predicted no churn and the customer churned",
-              "We predicted churn and the customer did not churn")))
+              "Predicted correctly homeowner would not enter the credit program, no marketing resources were allocated, and no credit was allocated.",
+              "Predicted correctly homeowner would enter credit program; allocated the marketing resources, and 25% ultimately achieved the credit",
+              "We predicted that a homeowner would not enter the credit program but they did.",
+              "Predicted incorrectly that a homeowner would enter the credit program.")))
 
 print(cost_benefit_table)
 
@@ -374,11 +359,10 @@ whichThreshold <-
     dplyr::select(starts_with("Count"), Threshold) %>%
     gather(Variable, Count, -Threshold) %>%
     mutate(Revenue =
-             case_when(Variable == "Count_TN"  ~ Count * 30,
-                       Variable == "Count_TP"  ~ ((30 - 8) * (Count * .50)) +
-                                                 (-32 * (Count * .50)),
-                       Variable == "Count_FN"  ~ (-30) * Count,
-                       Variable == "Count_FP"  ~ (30 - 8) * Count))
+             case_when(Variable == "Count_TN"  ~ 0,
+                       Variable == "Count_TP"  ~ 12400 * Count,
+                       Variable == "Count_FN"  ~ 0,
+                       Variable == "Count_FP"  ~ Count * -2850))
 
 print(
 whichThreshold %>%
@@ -420,11 +404,11 @@ whichThreshold_revenue %>%
 ```
 
 ```{r model 1 setup}
-model_and_eval(housing_subsidy_data, "regular")
+model_and_eval(housing_subsidy_data)
 ```
 
 ```{r model 2 setup}
-model_and_eval(hs_data_eng, "lasso")
+model_and_eval(hs_data_eng)
 ```
 
 ## Results
@@ -438,6 +422,9 @@ Output an ROC curve for your new model and interpret it.
 
 
 ### Cost-Benefit Analysis
+
+Because the benefits of a true positive significantly outweight the cost of a false positive, we want to optimize our model to optimize sensitivity (true positive rate).
+
 Develop a cost benefit analysis.
 
 (This needs to be updated.)
