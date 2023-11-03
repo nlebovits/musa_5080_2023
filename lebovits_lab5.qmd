@@ -1,0 +1,448 @@
+---
+title: "Philadelphia Bikeshare Rebalancing Prediction"
+author: "Nissim Lebovits"
+subtitle: "MUSA 508, Lab #5"
+date: today
+project:
+  type: website
+  output-dir: docs
+format: 
+  html:
+    embed-resources: true
+    toc: true
+    theme: flatly
+    code-fold: true
+    code-summary: "Show the code"
+    number-sections: true
+editor: source
+execute:
+  warning: false
+  error: false
+  messages: false
+  echo: true
+  cache: false
+---
+
+# Summary
+
+# Introduction
+In this assignment, you will pick a city with a bike share open data feed and forecast space/time demand for bike share pickups. Most bike share data has fields for origin, destination and date/time.
+
+Envision a bike re-balancing plan and design an algorithm to inform such a plan. The deliverables include:
+
+2-3 paragraphs that introduce the reader to bike share and the need for re-balancing. How will re-balancing occur? Perhaps you will manage a small fleet of trucks to move bikes from here to there or perhaps you will offer rewards, discounts or other incentives for riders to move a bike from place to place. Keep in mind, your plan will inform the appropriate time lag features you can use. How far forward do you wish to predict for at any given time?
+```{r setup}
+library(tidyverse)
+library(sf)
+library(lubridate)
+library(tigris)
+library(tidycensus)
+library(viridis)
+library(riem)
+library(gridExtra)
+library(knitr)
+library(kableExtra)
+library(RSocrata)
+library(tidyverse)
+library(sf)
+library(tmap)
+
+
+
+options(tmap.mode = 'plot', scipen = 999)
+
+tmap_options(basemaps = "Esri.WorldGrayCanvas") #set global tmap basemap
+
+crs <- "epsg:2272"
+
+plotTheme <- theme(
+  plot.title =element_text(size=12),
+  plot.subtitle = element_text(size=8),
+  plot.caption = element_text(size = 6),
+  axis.text.x = element_text(size = 10, angle = 45, hjust = 1),
+  axis.text.y = element_text(size = 10),
+  axis.title.y = element_text(size = 10),
+  # Set the entire chart region to blank
+  panel.background=element_blank(),
+  plot.background=element_blank(),
+  #panel.border=element_rect(colour="#F0F0F0"),
+  # Format the grid
+  panel.grid.major=element_line(colour="#D0D0D0",size=.2),
+  axis.ticks=element_blank())
+
+mapTheme <- theme(plot.title =element_text(size=12),
+                  plot.subtitle = element_text(size=8),
+                  plot.caption = element_text(size = 6),
+                  axis.line=element_blank(),
+                  axis.text.x=element_blank(),
+                  axis.text.y=element_blank(),
+                  axis.ticks=element_blank(),
+                  axis.title.x=element_blank(),
+                  axis.title.y=element_blank(),
+                  panel.background=element_blank(),
+                  panel.border=element_blank(),
+                  panel.grid.major=element_line(colour = 'transparent'),
+                  panel.grid.minor=element_blank(),
+                  legend.direction = "vertical", 
+                  legend.position = "right",
+                  plot.margin = margin(1, 1, 1, 1, 'cm'),
+                  legend.key.height = unit(1, "cm"), legend.key.width = unit(0.2, "cm"))
+
+palette5 <- c("#eff3ff","#bdd7e7","#6baed6","#3182bd","#08519c")
+palette4 <- c("#D2FBD4","#92BCAB","#527D82","#123F5A")
+palette2 <- c("#6baed6","#08519c")
+
+```
+
+# Methods
+
+## Data
+
+### Overview
+Your unit of analysis here is the bike share station, not Census tracts. Engineer features to account for weather and time effects and experiment with some amenity features. Develop two different training/test sets including 1) a 3 week training set and a 2 week test set of all the stations and 2) a complete 5 week panel for cross-validation.
+
+*Need to confirm that the variables have stayed consistent across time*. Also note that I'm using 2021 data because 2022 aren't out yet--but it shouldn't have changed *that* much.
+```{r imports}
+#| output: false
+
+stations_path <- "indego_data/indego-trips-2022-q4.csv"
+
+suppressMessages(
+stations <- read_csv(stations_path) %>%
+  filter(!is.na(start_lon),
+         !is.na(start_lat),
+         !is.na(end_lon),
+         !is.na(end_lat)) %>%
+  st_as_sf(coords = c('start_lon', 'start_lat'), crs = 4326) %>%
+  st_transform(crs = crs) %>%
+                mutate(date = as.Date(strptime(start_time, "%m/%d/%Y %H:%M")),
+                       week = week(date),
+                       dotw = wday(date),
+                       interval60 = as.POSIXct(start_time, format = "%m/%d/%Y %H"))
+)
+
+
+
+### PHL bounds and grid----------------------------------------
+phl_path <- "https://opendata.arcgis.com/datasets/405ec3da942d4e20869d4e1449a2be48_0.geojson"
+phl <- st_read(phl_path, quiet = TRUE) %>%
+          st_transform(crs = crs)
+
+### GET ACS
+
+phlCensus <- get_acs(geography = "tract", 
+                          variables = c("B01003_001", 
+                                        "B19013_001", 
+                                        "B02001_002", 
+                                        "B08013_001",
+                                        "B08012_001", 
+                                        "B08301_001", 
+                                        "B08301_010", 
+                                        "B01002_001"), 
+                          year = 2021, 
+                          state = "PA", 
+                          geometry = TRUE, 
+                          county="Philadelphia",
+                          output = "wide") %>%
+                  rename(Total_Pop =  B01003_001E,
+                         Med_Inc = B19013_001E,
+                         Med_Age = B01002_001E,
+                         White_Pop = B02001_002E,
+                         Travel_Time = B08013_001E,
+                         Num_Commuters = B08012_001E,
+                         Means_of_Transport = B08301_001E,
+                         Total_Public_Trans = B08301_010E) %>%
+                  select(Total_Pop, Med_Inc, White_Pop, Travel_Time,
+                         Means_of_Transport, Total_Public_Trans,
+                         Med_Age,
+                         GEOID, geometry) %>%
+                  mutate(Percent_White = White_Pop / Total_Pop,
+                         Mean_Commute_Time = Travel_Time / Total_Public_Trans,
+                         Percent_Taking_Public_Trans = Total_Public_Trans / Means_of_Transport)
+
+phlTracts <- 
+  phlCensus %>%
+  as.data.frame() %>%
+  distinct(GEOID, .keep_all = TRUE) %>%
+  select(GEOID, geometry) %>% 
+  st_sf %>%
+  st_transform(crs = crs)
+
+
+dat_census <- st_join(stations, phlTracts, join = st_intersects, left = TRUE) %>%
+                      rename(Origin.Tract = GEOID) %>%
+                      mutate(start_lon = unlist(map(geometry, 1)),
+                             start_lat = unlist(map(geometry, 2))) %>%
+                      as.data.frame() %>%
+                      select(-geometry) %>%
+                      st_as_sf(., coords = c("end_lon", "end_lat"), crs = crs) %>%
+                      st_join(., phlTracts %>%
+                                st_transform(crs=crs),
+                              join=st_intersects,
+                              left = TRUE) %>%
+                      rename(Destination.Tract = GEOID)  %>%
+                      mutate(end_lon = unlist(map(geometry, 1)),
+                             end_lat = unlist(map(geometry, 2)))%>%
+                      as.data.frame() %>%
+                      select(-geometry)
+
+
+### import weather--------------------------------------------------------------
+weather.Panel <- 
+  riem_measures(station = "PHL", date_start = "2022-10-01", date_end = "2022-12-31") %>%
+  dplyr::select(valid, tmpf, p01i, sknt)%>%
+  replace(is.na(.), 0) %>%
+    mutate(date = as.Date(substr(valid,1,13)),
+           week = week(date),
+           dotw = wday(date),
+           interval60 = ymd_h(substr(valid,1,13)))%>%
+    group_by(interval60) %>%
+    summarize(Temperature = max(tmpf),
+              Precipitation = sum(p01i),
+              Wind_Speed = max(sknt)) %>%
+    mutate(Temperature = ifelse(Temperature == 0, 42, Temperature))
+```
+
+```{r weather plots}
+grid.arrange(
+  ggplot(weather.Panel, aes(interval60,Precipitation)) + geom_line() + 
+  labs(title="Precipitation", x="Hour", y="Precipitation") + plotTheme,
+  ggplot(weather.Panel, aes(interval60,Wind_Speed)) + geom_line() + 
+    labs(title="Wind Speed", x="Hour", y="Wind Speed") + plotTheme,
+  ggplot(weather.Panel, aes(interval60,Temperature)) + geom_line() + 
+    labs(title="Temperature", x="Hour", y="Temperature") + plotTheme,
+  top="Weather Data - Philadelphia PHL - Oct. - Dec., 2022")
+```
+
+### Exploratory Analysis
+Develop exploratory analysis plots that describe the space/time dependencies in the data and create an animated map. Interpret your findings in the context of the re-balancing plan.
+
+```{r eda}
+
+stations %>%
+  ggplot(aes(x = duration)) +
+    geom_freqpoly()
+
+stations %>%
+  ggplot(aes(x = passholder_type)) +
+    geom_bar()
+
+stations %>%
+  ggplot(aes(x = trip_route_category)) +
+    geom_bar()
+
+stations %>%
+  ggplot(aes(x = bike_type)) +
+    geom_bar()
+
+
+# using ggplot, plot the number of trips per day
+stations %>%
+  group_by(date) %>%
+  summarise(trips = n()) %>%
+  ggplot(aes(x = date, y = trips)) +
+    geom_line() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r trips x hour}
+ggplot(dat_census %>%
+         group_by(interval60) %>%
+         tally())+
+  geom_line(aes(x = interval60, y = n))+
+  labs(title="Bike share trips per hr. Philadelphia, Oct. - Dec., 2022",
+       x="Date", 
+       y="Number of trips")+
+  plotTheme
+
+
+dat_census %>%
+        mutate(time_of_day = case_when(hour(interval60) < 7 | hour(interval60) > 18 ~ "Overnight",
+                                 hour(interval60) >= 7 & hour(interval60) < 10 ~ "AM Rush",
+                                 hour(interval60) >= 10 & hour(interval60) < 15 ~ "Mid-Day",
+                                 hour(interval60) >= 15 & hour(interval60) <= 18 ~ "PM Rush"))%>%
+         group_by(interval60, start_station, time_of_day) %>%
+         tally()%>%
+  group_by(start_station, time_of_day)%>%
+  summarize(mean_trips = mean(n))%>%
+  ggplot()+
+  geom_histogram(aes(mean_trips), binwidth = 1)+
+  labs(title="Mean Number of Hourly Trips Per Station. Philadelphia, Oct. - Dec., 2022",
+       x="Number of trips", 
+       y="Frequency")+
+  facet_wrap(~time_of_day)+
+  plotTheme
+
+
+ggplot(dat_census %>%
+         group_by(interval60, start_station) %>%
+         tally())+
+  geom_histogram(aes(n), binwidth = 5)+
+  labs(title="Bike share trips per hr by station. Philadelphia, Oct. - Dec., 2022",
+       x="Trip Counts", 
+       y="Number of Stations")+
+  plotTheme
+
+dat_census %>% mutate(hour = hour(interval60)) %>%
+ggplot(aes(x = hour, color = as.factor(dotw)))+
+     geom_freqpoly(binwidth = 1)+
+  labs(title="Bike share trips in Philadelphia, by day of the week, Oct. - Dec., 2022",
+       x="Hour", 
+       y="Trip Counts")+
+     plotTheme
+
+
+ggplot(dat_census %>% 
+         mutate(hour = hour(interval60),
+                weekend = ifelse(dotw > 5, "Weekend", "Weekday")))+
+     geom_freqpoly(aes(x = hour, color = weekend), binwidth = 1)+
+  labs(title="Bike share trips in Philadelphia, Oct. - Dec., 2022, \nweekend vs. weekday",
+       x="Hour", 
+       y="Trip Counts")+
+     plotTheme
+
+
+ggplot()+
+  geom_sf(data = phlTracts %>%
+          st_transform(crs=crs))+
+  geom_point(data = dat_census %>% 
+            mutate(hour = hour(interval60),
+                weekend = ifelse(dotw > 5, "Weekend", "Weekday"),
+                time_of_day = case_when(hour(interval60) < 7 | hour(interval60) > 18 ~ "Overnight",
+                                 hour(interval60) >= 7 & hour(interval60) < 10 ~ "AM Rush",
+                                 hour(interval60) >= 10 & hour(interval60) < 15 ~ "Mid-Day",
+                                 hour(interval60) >= 15 & hour(interval60) <= 18 ~ "PM Rush"))%>%
+              group_by(start_station, start_lat, start_lon, weekend, time_of_day) %>%
+              tally(),
+            aes(x=start_lon, y = start_lat, color = n), 
+            fill = "transparent", alpha = 0.7, size = 0.7)+
+  scale_colour_viridis(direction = -1,
+  discrete = FALSE, option = "D")+
+  ylim(min(dat_census$start_lat), max(dat_census$start_lat))+
+  xlim(min(dat_census$start_lon), max(dat_census$start_lon))+
+  facet_grid(weekend ~ time_of_day)+
+  labs(title="Bike share trips per hr by station. Philadelphia, Oct. - Dec., 2022")+
+  mapTheme
+```
+
+## Spatiotemporal Prediction
+Use purrr to train and validate several models for comparison on the latter two week test set. Perform either random k-fold cross validation or LOGO-CV on the 5 week panel. You may choose to cross validate by time or space. Interpret your findings in the context of accuracy and generalizability.
+
+```{r wrangle}
+study.panel <- 
+  expand.grid(interval60=unique(dat_census$interval60), 
+              start_station = unique(dat_census$start_station)) %>%
+  left_join(., dat_census %>%
+              select(start_station, Origin.Tract, start_lon, start_lat)%>%
+              distinct() %>%
+              group_by(start_station) %>%
+              slice(1))
+
+ride.panel <- 
+  dat_census %>%
+  mutate(Trip_Counter = 1) %>%
+  right_join(study.panel) %>% 
+  group_by(interval60, start_station, Origin.Tract, start_lon, start_lat) %>%
+  summarize(Trip_Count = sum(Trip_Counter, na.rm=T)) %>%
+  left_join(weather.Panel, by = "interval60") %>%
+  ungroup() %>%
+  filter(!is.na(start_station)) %>%
+  mutate(week = week(interval60),
+         dotw = wday(interval60)) %>%
+  filter(!is.na(Origin.Tract))
+
+ride.panel <- 
+  left_join(ride.panel, phlCensus %>%
+              as.data.frame() %>%
+              select(-geometry), by = c("Origin.Tract" = "GEOID"))
+
+# holidays are nov 23, dec 23, 24, 25, 30, 31
+# how do I return the yday for the dates above?
+holidays_22 <- c(327, 148, 357, 358, 359, 364, 365)
+
+
+ride.panel <- 
+  ride.panel %>% 
+  arrange(start_station, interval60) %>% 
+  mutate(lagHour = dplyr::lag(Trip_Count, 1),
+         lag2Hours = dplyr::lag(Trip_Count, 2),
+         lag3Hours = dplyr::lag(Trip_Count, 3),
+         lag4Hours = dplyr::lag(Trip_Count, 4),
+         lag12Hours = dplyr::lag(Trip_Count, 12),
+         lag1day = dplyr::lag(Trip_Count,24),
+         holiday = ifelse(yday(interval60) %in% holidays_22, 1, 0)) %>%
+   mutate(day = yday(interval60)) %>%
+   mutate(holidayLag = case_when(dplyr::lag(holiday, 1) == 1 ~ "PlusOneDay",
+                                 dplyr::lag(holiday, 2) == 1 ~ "PlustTwoDays",
+                                 dplyr::lag(holiday, 3) == 1 ~ "PlustThreeDays",
+                                 dplyr::lead(holiday, 1) == 1 ~ "MinusOneDay",
+                                 dplyr::lead(holiday, 2) == 1 ~ "MinusTwoDays",
+                                 dplyr::lead(holiday, 3) == 1 ~ "MinusThreeDays",
+                                TRUE ~ "Zero"))
+
+as.data.frame(ride.panel) %>%
+    group_by(interval60) %>% 
+    summarise_at(vars(starts_with("lag"), "Trip_Count"), mean, na.rm = TRUE) %>%
+    gather(Variable, Value, -interval60, -Trip_Count) %>%
+    mutate(Variable = factor(Variable, levels=c("lagHour","lag2Hours","lag3Hours","lag4Hours",
+                                                "lag12Hours","lag1day")))%>%
+    group_by(Variable) %>%  
+    summarize(correlation = round(cor(Value, Trip_Count),2))
+```
+
+```{r model}
+ride.Train <- filter(ride.panel, week >= 26)
+ride.Test <- filter(ride.panel, week < 26)
+
+head(ride.panel %>% filter(week < 26))
+
+reg1 <- 
+  lm(Trip_Count ~  hour(interval60) + dotw + Temperature,  data=ride.Train)
+
+reg2 <- 
+  lm(Trip_Count ~  start_station + dotw + Temperature,  data=ride.Train)
+
+reg3 <- 
+  lm(Trip_Count ~  start_station + hour(interval60) + dotw + Temperature + Precipitation, 
+     data=ride.Train)
+
+reg4 <- 
+  lm(Trip_Count ~  start_station +  hour(interval60) + dotw + Temperature + Precipitation +
+                   lagHour + lag2Hours +lag3Hours + lag12Hours + lag1day, 
+     data=ride.Train)
+
+reg5 <- 
+  lm(Trip_Count ~  start_station + hour(interval60) + dotw + Temperature + Precipitation +
+                   lagHour + lag2Hours +lag3Hours +lag12Hours + lag1day + holidayLag + holiday, 
+     data=ride.Train)
+```
+```{r predict}
+ride.Test.weekNest <- 
+  ride.Test %>%
+  nest(-week) 
+
+model_pred <- function(dat, fit){
+   pred <- predict(fit, newdata = dat)}
+
+week_predictions <- 
+  ride.Test.weekNest %>% 
+    mutate(ATime_FE = map(.x = data, fit = reg1, .f = model_pred),
+           BSpace_FE = map(.x = data, fit = reg2, .f = model_pred),
+           CTime_Space_FE = map(.x = data, fit = reg3, .f = model_pred),
+           DTime_Space_FE_timeLags = map(.x = data, fit = reg4, .f = model_pred),
+           ETime_Space_FE_timeLags_holidayLags = map(.x = data, fit = reg5, .f = model_pred)) %>% 
+    gather(Regression, Prediction, -data, -week) %>%
+    mutate(Observed = map(data, pull, Trip_Count),
+           Absolute_Error = map2(Observed, Prediction,  ~ abs(.x - .y)),
+           MAE = map_dbl(Absolute_Error, mean, na.rm = TRUE),
+           sd_AE = map_dbl(Absolute_Error, sd, na.rm = TRUE))
+
+week_predictions
+```
+
+# Results
+
+# Discussion
+
+# Conclusion
+Conclude with how useful your algorithm is for the bike re-balancing plan.
