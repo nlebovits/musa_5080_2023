@@ -302,9 +302,12 @@ ggplot(aes(x = hour, color = as.factor(dotw)))+
      plotTheme
 
 
+
+weekend <- c(1, 7)
+
 ggplot(dat_census %>% 
          mutate(hour = hour(interval60),
-                weekend = ifelse(dotw > 5, "Weekend", "Weekday")))+
+                weekend = ifelse(dotw %in% weekend, "Weekend", "Weekday")))+
      geom_freqpoly(aes(x = hour, color = weekend), binwidth = 1)+
   labs(title="Bike share trips in Philadelphia, Oct. - Dec., 2022, \nweekend vs. weekday",
        x="Hour", 
@@ -403,8 +406,9 @@ as.data.frame(ride.panel) %>%
 
 
 ```{r model}
-ride.Train <- filter(ride.panel, week >= 26)
-ride.Test <- filter(ride.panel, week < 26)
+#| output: false
+ride.Train <- filter(ride.panel, week >= 47 | week == 1)
+ride.Test <- filter(ride.panel, week < 47 & week != 1)
 
 head(ride.panel %>% filter(week < 26))
 
@@ -428,7 +432,9 @@ reg5 <-
                    lagHour + lag2Hours +lag3Hours +lag12Hours + lag1day + holidayLag + holiday, 
      data=ride.Train)
 ```
+
 ```{r predict}
+#| output: false
 ride.Test.weekNest <- 
   ride.Test %>%
   nest(-week) 
@@ -448,8 +454,6 @@ week_predictions <-
            Absolute_Error = map2(Observed, Prediction,  ~ abs(.x - .y)),
            MAE = map_dbl(Absolute_Error, mean, na.rm = TRUE),
            sd_AE = map_dbl(Absolute_Error, sd, na.rm = TRUE))
-
-week_predictions
 ```
 
 # Results
@@ -502,7 +506,7 @@ ggplot(.)+
   mapTheme
 ```
 
-```{r model results}
+```{r model results 2}
 week_predictions %>% 
     mutate(interval60 = map(data, pull, interval60),
            start_station = map(data, pull, start_station), 
@@ -514,11 +518,11 @@ week_predictions %>%
            dotw) %>%
     unnest(cols = c(interval60, start_station, start_lon, start_lat, Observed, Prediction, dotw)) %>%
   filter(Regression == "ETime_Space_FE_timeLags_holidayLags")%>%
-  mutate(weekend = ifelse(dotw %in% c("Sun", "Sat"), "Weekend", "Weekday"),
+  mutate(weekend = ifelse(dotw %in% weekend, "Weekend", "Weekday"),
          time_of_day = case_when(hour(interval60) < 7 | hour(interval60) > 18 ~ "Overnight",
                                  hour(interval60) >= 7 & hour(interval60) < 10 ~ "AM Rush",
                                  hour(interval60) >= 10 & hour(interval60) < 15 ~ "Mid-Day",
-                                 hour(interval60) >= 15 & hour(interval60) <= 18 ~ "PM Rush"))%>%
+                                 hour(interval60) >= 15 & hour(interval60) <= 18 ~ "PM Rush")) %>%
   ggplot()+
   geom_point(aes(x= Observed, y = Prediction))+
     geom_smooth(aes(x= Observed, y= Prediction), method = "lm", se = FALSE, color = "red")+
@@ -542,7 +546,7 @@ week_predictions %>%
            dotw) %>%
     unnest() %>%
   filter(Regression == "ETime_Space_FE_timeLags_holidayLags")%>%
-  mutate(weekend = ifelse(dotw %in% c("Sun", "Sat"), "Weekend", "Weekday"),
+  mutate(weekend = ifelse(dotw %in% weekend, "Weekend", "Weekday"),
          time_of_day = case_when(hour(interval60) < 7 | hour(interval60) > 18 ~ "Overnight",
                                  hour(interval60) >= 7 & hour(interval60) < 10 ~ "AM Rush",
                                  hour(interval60) >= 10 & hour(interval60) < 15 ~ "Mid-Day",
@@ -563,21 +567,21 @@ week_predictions %>%
   mapTheme
 ```
 ```{r error x socioecon vars}
-week_predictions %>% 
+week_predictions %>%
     mutate(interval60 = map(data, pull, interval60),
-           start_station = map(data, pull, start_station), 
-           start_lat = map(data, pull, start_lat), 
+           start_station = map(data, pull, start_station),
+           start_lat = map(data, pull, start_lat),
            start_lon = map(data, pull, start_lon),
            dotw = map(data, pull, dotw),
            Percent_Taking_Public_Trans = map(data, pull, Percent_Taking_Public_Trans),
            Med_Inc = map(data, pull, Med_Inc),
            Percent_White = map(data, pull, Percent_White)) %>%
-    select(interval60, start_station, start_lon, 
+    select(interval60, start_station, start_lon,
            start_lat, Observed, Prediction, Regression,
            dotw, Percent_Taking_Public_Trans, Med_Inc, Percent_White) %>%
     unnest(cols = c(interval60, start_station, start_lon, start_lat, Observed, Prediction, dotw, Percent_Taking_Public_Trans, Med_Inc, Percent_White)) %>%
-  filter(Regression == "ETime_Space_FE_timeLags_holidayLags")%>%
-  mutate(weekend = ifelse(dotw %in% c("Sun", "Sat"), "Weekend", "Weekday"),
+  filter(Regression == "ETime_Space_FE_timeLags_holidayLags") %>%
+  mutate(weekend = ifelse(dotw %in% weekend, "Weekend", "Weekday"),
          time_of_day = case_when(hour(interval60) < 7 | hour(interval60) > 18 ~ "Overnight",
                                  hour(interval60) >= 7 & hour(interval60) < 10 ~ "AM Rush",
                                  hour(interval60) >= 10 & hour(interval60) < 15 ~ "Mid-Day",
@@ -594,6 +598,7 @@ week_predictions %>%
   labs(title="Errors as a function of socio-economic variables",
        y="Mean Absolute Error (Trips)")+
   plotTheme
+
 ```
 
 
