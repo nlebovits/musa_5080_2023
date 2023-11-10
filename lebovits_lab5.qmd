@@ -46,6 +46,7 @@ library(RSocrata)
 library(tidyverse)
 library(sf)
 library(tmap)
+library(sfdep)
 
 
 
@@ -158,7 +159,16 @@ phlCensus <- get_acs(geography = "tract",
                          GEOID, geometry) %>%
                   mutate(Percent_White = White_Pop / Total_Pop,
                          Mean_Commute_Time = Travel_Time / Total_Public_Trans,
-                         Percent_Taking_Public_Trans = Total_Public_Trans / Means_of_Transport)
+                         Percent_Taking_Public_Trans = Total_Public_Trans / Means_of_Transport) %>%
+                  mutate(
+                      nb = st_knn(geometry, 5), # need to impute census values for tracts with pop ~ 0
+                      wt = st_weights(nb),
+                      Med_Age = ifelse(is.na(Med_Age), purrr::map_dbl(find_xj(Med_Age, nb), mean, na.rm = TRUE), Med_Age),
+                      Med_Inc = ifelse(is.na(Med_Inc), purrr::map_dbl(find_xj(Med_Inc, nb), mean, na.rm = TRUE), Med_Inc),
+                      Travel_Time = ifelse(is.na(Travel_Time), purrr::map_dbl(find_xj(Travel_Time, nb), mean, na.rm = TRUE), Travel_Time),
+                      Percent_White = ifelse(is.na(Percent_White), purrr::map_dbl(find_xj(Percent_White, nb), mean, na.rm = TRUE), Percent_White),
+                      Mean_Commute_Time = ifelse(is.na(Mean_Commute_Time), purrr::map_dbl(find_xj(Mean_Commute_Time, nb), mean, na.rm = TRUE), Mean_Commute_Time),
+                      Percent_Taking_Public_Trans = ifelse(is.na(Percent_Taking_Public_Trans), purrr::map_dbl(find_xj(Percent_Taking_Public_Trans, nb), mean, na.rm = TRUE), Percent_Taking_Public_Trans))
 
 phlTracts <- 
   phlCensus %>%
@@ -189,7 +199,7 @@ dat_census <- st_join(stations, phlTracts, join = st_intersects, left = TRUE) %>
 
 ### import weather--------------------------------------------------------------
 weather.Panel <- 
-  riem_measures(station = "PHL", date_start = "2022-10-01", date_end = "2022-12-31") %>%
+  riem_measures(station = "PHL", date_start = "2022-10-01", date_end = "2023-01-05") %>%
   dplyr::select(valid, tmpf, p01i, sknt)%>%
   replace(is.na(.), 0) %>%
     mutate(date = as.Date(substr(valid,1,13)),
@@ -351,10 +361,11 @@ ride.panel <-
          dotw = wday(interval60)) %>%
   filter(!is.na(Origin.Tract))
 
-ride.panel <- 
-  left_join(ride.panel, phlCensus %>%
-              as.data.frame() %>%
-              select(-geometry), by = c("Origin.Tract" = "GEOID"))
+ride.panel <- ride.panel %>%
+                st_as_sf(coords = c("start_lon", "start_lat"), crs = crs) %>%
+                mutate(start_lon = as.numeric(st_coordinates(.)[,1]),
+                       start_lat = as.numeric(st_coordinates(.)[,2])) %>%
+                st_join((phlCensus %>% st_transform(crs = crs)))
 
 # holidays are nov 23, dec 23, 24, 25, 30, 31
 # how do I return the yday for the dates above?
@@ -389,6 +400,7 @@ as.data.frame(ride.panel) %>%
     group_by(Variable) %>%  
     summarize(correlation = round(cor(Value, Trip_Count),2))
 ```
+
 
 ```{r model}
 ride.Train <- filter(ride.panel, week >= 26)
@@ -441,6 +453,149 @@ week_predictions
 ```
 
 # Results
+
+Interestingly, time seems more important to models than space
+```{r model results}
+week_predictions %>%
+  dplyr::select(week, Regression, MAE) %>%
+  gather(Variable, MAE, -Regression, -week) %>%
+  ggplot(aes(week, MAE)) + 
+    geom_bar(aes(fill = Regression), position = "dodge", stat="identity") +
+    scale_fill_manual(values = palette5) +
+    labs(title = "Mean Absolute Errors by model specification and week") +
+  plotTheme
+
+week_predictions %>% 
+    mutate(interval60 = map(data, pull, interval60),
+           start_station = map(data, pull, start_station)) %>%
+    dplyr::select(interval60, start_station, Observed, Prediction, Regression) %>%
+    unnest() %>%
+    gather(Variable, Value, -Regression, -interval60, -start_station) %>%
+    group_by(Regression, Variable, interval60) %>%
+    summarize(Value = sum(Value)) %>%
+    ggplot(aes(interval60, Value, colour=Variable)) + 
+      geom_line(size = 1.1) + 
+      facet_wrap(~Regression, ncol=1) +
+      labs(title = "Predicted/Observed bike share time series", subtitle = "Philadelphia; A test set of 3 Months",  x = "Hour", y= "Station Trips") +
+      plotTheme
+
+week_predictions %>% 
+    mutate(interval60 = map(data, pull, interval60),
+           start_station = map(data, pull, start_station), 
+           start_lat = map(data, pull, start_lat), 
+           start_lon = map(data, pull, start_lon)) %>%
+    select(interval60, start_station, start_lon, start_lat, Observed, Prediction, Regression) %>%
+    unnest() %>%
+  filter(Regression == "ETime_Space_FE_timeLags_holidayLags") %>%
+  group_by(start_station, start_lon, start_lat) %>%
+  summarize(MAE = mean(abs(Observed-Prediction), na.rm = TRUE))%>%
+ggplot(.)+
+  geom_sf(data = phlTracts %>%
+          st_transform(crs=crs), color = "grey", fill = "transparent")+
+  geom_point(aes(x = start_lon, y = start_lat, color = MAE), 
+             fill = "transparent", alpha = 0.4)+
+  scale_colour_viridis(direction = 1,
+  discrete = FALSE, option = "D")+
+  ylim(min(dat_census$start_lat), max(dat_census$start_lat))+
+  xlim(min(dat_census$start_lon), max(dat_census$start_lon))+
+  labs(title="Mean Abs Error, Test Set, Model 5")+
+  mapTheme
+```
+
+```{r model results}
+week_predictions %>% 
+    mutate(interval60 = map(data, pull, interval60),
+           start_station = map(data, pull, start_station), 
+           start_lat = map(data, pull, start_lat), 
+           start_lon = map(data, pull, start_lon),
+           dotw = map(data, pull, dotw)) %>%
+    select(interval60, start_station, start_lon, 
+           start_lat, Observed, Prediction, Regression,
+           dotw) %>%
+    unnest(cols = c(interval60, start_station, start_lon, start_lat, Observed, Prediction, dotw)) %>%
+  filter(Regression == "ETime_Space_FE_timeLags_holidayLags")%>%
+  mutate(weekend = ifelse(dotw %in% c("Sun", "Sat"), "Weekend", "Weekday"),
+         time_of_day = case_when(hour(interval60) < 7 | hour(interval60) > 18 ~ "Overnight",
+                                 hour(interval60) >= 7 & hour(interval60) < 10 ~ "AM Rush",
+                                 hour(interval60) >= 10 & hour(interval60) < 15 ~ "Mid-Day",
+                                 hour(interval60) >= 15 & hour(interval60) <= 18 ~ "PM Rush"))%>%
+  ggplot()+
+  geom_point(aes(x= Observed, y = Prediction))+
+    geom_smooth(aes(x= Observed, y= Prediction), method = "lm", se = FALSE, color = "red")+
+    geom_abline(slope = 1, intercept = 0)+
+  facet_wrap(time_of_day ~ weekend)+
+  labs(title="Observed vs Predicted",
+       x="Observed trips", 
+       y="Predicted trips")+
+  plotTheme
+```
+
+```{r spatial error}
+week_predictions %>% 
+    mutate(interval60 = map(data, pull, interval60),
+           start_station = map(data, pull, start_station), 
+           start_lat = map(data, pull, start_lat), 
+           start_lon = map(data, pull, start_lon),
+           dotw = map(data, pull, dotw) ) %>%
+    select(interval60, start_station, start_lon, 
+           start_lat, Observed, Prediction, Regression,
+           dotw) %>%
+    unnest() %>%
+  filter(Regression == "ETime_Space_FE_timeLags_holidayLags")%>%
+  mutate(weekend = ifelse(dotw %in% c("Sun", "Sat"), "Weekend", "Weekday"),
+         time_of_day = case_when(hour(interval60) < 7 | hour(interval60) > 18 ~ "Overnight",
+                                 hour(interval60) >= 7 & hour(interval60) < 10 ~ "AM Rush",
+                                 hour(interval60) >= 10 & hour(interval60) < 15 ~ "Mid-Day",
+                                 hour(interval60) >= 15 & hour(interval60) <= 18 ~ "PM Rush")) %>%
+  group_by(start_station, weekend, time_of_day, start_lon, start_lat) %>%
+  summarize(MAE = mean(abs(Observed-Prediction), na.rm = TRUE))%>%
+  ggplot(.)+
+  geom_sf(data = phlTracts %>%
+          st_transform(crs=crs), color = "grey", fill = "transparent")+
+  geom_point(aes(x = start_lon, y = start_lat, color = MAE), 
+             fill = "transparent", size = 1, alpha = 0.4)+
+  scale_colour_viridis(direction = 1,
+  discrete = FALSE, option = "D")+
+  ylim(min(dat_census$start_lat), max(dat_census$start_lat))+
+  xlim(min(dat_census$start_lon), max(dat_census$start_lon))+
+  facet_grid(weekend~time_of_day)+
+  labs(title="Mean Absolute Errors, Test Set")+
+  mapTheme
+```
+```{r error x socioecon vars}
+week_predictions %>% 
+    mutate(interval60 = map(data, pull, interval60),
+           start_station = map(data, pull, start_station), 
+           start_lat = map(data, pull, start_lat), 
+           start_lon = map(data, pull, start_lon),
+           dotw = map(data, pull, dotw),
+           Percent_Taking_Public_Trans = map(data, pull, Percent_Taking_Public_Trans),
+           Med_Inc = map(data, pull, Med_Inc),
+           Percent_White = map(data, pull, Percent_White)) %>%
+    select(interval60, start_station, start_lon, 
+           start_lat, Observed, Prediction, Regression,
+           dotw, Percent_Taking_Public_Trans, Med_Inc, Percent_White) %>%
+    unnest(cols = c(interval60, start_station, start_lon, start_lat, Observed, Prediction, dotw, Percent_Taking_Public_Trans, Med_Inc, Percent_White)) %>%
+  filter(Regression == "ETime_Space_FE_timeLags_holidayLags")%>%
+  mutate(weekend = ifelse(dotw %in% c("Sun", "Sat"), "Weekend", "Weekday"),
+         time_of_day = case_when(hour(interval60) < 7 | hour(interval60) > 18 ~ "Overnight",
+                                 hour(interval60) >= 7 & hour(interval60) < 10 ~ "AM Rush",
+                                 hour(interval60) >= 10 & hour(interval60) < 15 ~ "Mid-Day",
+                                 hour(interval60) >= 15 & hour(interval60) <= 18 ~ "PM Rush")) %>%
+  filter(time_of_day == "AM Rush") %>%
+  group_by(start_station, Percent_Taking_Public_Trans, Med_Inc, Percent_White) %>%
+  summarize(MAE = mean(abs(Observed-Prediction), na.rm = TRUE))%>%
+  gather(-start_station, -MAE, key = "variable", value = "value")%>%
+  ggplot(.)+
+  #geom_sf(data = chicagoCensus, color = "grey", fill = "transparent")+
+  geom_point(aes(x = value, y = MAE), alpha = 0.4)+
+  geom_smooth(aes(x = value, y = MAE), method = "lm", se= FALSE)+
+  facet_wrap(~variable, scales = "free")+
+  labs(title="Errors as a function of socio-economic variables",
+       y="Mean Absolute Error (Trips)")+
+  plotTheme
+```
+
 
 # Discussion
 
