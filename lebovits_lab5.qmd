@@ -24,14 +24,12 @@ execute:
 ---
 
 # Summary
+Rebalancing is a common and important problem facing bike share systems around the globe. Below, we consider the value of a range of linear models incorporationg spatiotemporal data to predict future rideshare demand for the Indego bikeshare network in Philadelphia. We find that spatiotemporal features have high predictive power for this use case and enable us to construct a model worth deploying. Although the predictions are still hampered by non-spatially random error, indicating the possibility of further improving the model, we recommend deploying the model as a useful tool in ride share balancing.
 
 # Introduction
-In this assignment, you will pick a city with a bike share open data feed and forecast space/time demand for bike share pickups. Most bike share data has fields for origin, destination and date/time.
+```{r setup, set.seed(42)}
+#| output: false
 
-Envision a bike re-balancing plan and design an algorithm to inform such a plan. The deliverables include:
-
-2-3 paragraphs that introduce the reader to bike share and the need for re-balancing. How will re-balancing occur? Perhaps you will manage a small fleet of trucks to move bikes from here to there or perhaps you will offer rewards, discounts or other incentives for riders to move a bike from place to place. Keep in mind, your plan will inform the appropriate time lag features you can use. How far forward do you wish to predict for at any given time?
-```{r setup}
 library(tidyverse)
 library(sf)
 library(lubridate)
@@ -47,7 +45,7 @@ library(tidyverse)
 library(sf)
 library(tmap)
 library(sfdep)
-
+library(gganimate)
 
 
 options(tmap.mode = 'plot', scipen = 999)
@@ -89,22 +87,12 @@ mapTheme <- theme(plot.title =element_text(size=12),
                   plot.margin = margin(1, 1, 1, 1, 'cm'),
                   legend.key.height = unit(1, "cm"), legend.key.width = unit(0.2, "cm"))
 
+palette6 <- c("#eff3ff", "#bdd7e7", "#6baed6", "#3182bd", "#08519c", "#063970")
 palette5 <- c("#eff3ff","#bdd7e7","#6baed6","#3182bd","#08519c")
 palette4 <- c("#D2FBD4","#92BCAB","#527D82","#123F5A")
 palette2 <- c("#6baed6","#08519c")
 
-```
 
-# Methods
-
-## Data
-
-### Overview
-Your unit of analysis here is the bike share station, not Census tracts. Engineer features to account for weather and time effects and experiment with some amenity features. Develop two different training/test sets including 1) a 3 week training set and a 2 week test set of all the stations and 2) a complete 5 week panel for cross-validation.
-
-*Need to confirm that the variables have stayed consistent across time*. Also note that I'm using 2021 data because 2022 aren't out yet--but it shouldn't have changed *that* much.
-```{r imports}
-#| output: false
 
 stations_path <- "indego_data/indego-trips-2022-q4.csv"
 
@@ -211,49 +199,76 @@ weather.Panel <-
               Precipitation = sum(p01i),
               Wind_Speed = max(sknt)) %>%
     mutate(Temperature = ifelse(Temperature == 0, 42, Temperature))
+
+
+weekend <- c(1, 7)
 ```
 
-```{r weather plots}
-grid.arrange(
-  ggplot(weather.Panel, aes(interval60,Precipitation)) + geom_line() + 
-  labs(title="Precipitation", x="Hour", y="Precipitation") + plotTheme,
-  ggplot(weather.Panel, aes(interval60,Wind_Speed)) + geom_line() + 
-    labs(title="Wind Speed", x="Hour", y="Wind Speed") + plotTheme,
-  ggplot(weather.Panel, aes(interval60,Temperature)) + geom_line() + 
-    labs(title="Temperature", x="Hour", y="Temperature") + plotTheme,
-  top="Weather Data - Philadelphia PHL - Oct. - Dec., 2022")
+Bike sharing systems have emerged as a popular, eco-friendly transportation alternative in cities worldwide. These systems provide a network of bicycles and docking stations, allowing users to pick up a bike from one location and drop it off at another, facilitating short, point-to-point trips. However, one significant challenge in these systems is maintaining a balanced distribution of bikes across the network. This is where bike re-balancing becomes crucial.
+
+Due to daily commuting patterns and other socio-economic factors, certain areas in a city may experience a surplus of bikes while others face a shortage. For instance, residential areas might see a high number of bikes in the morning as people commute to work, leaving these stations depleted by evening. Conversely, business districts may have an excess of bikes during the day, which need to be redistributed for the evening commute home. Without effective re-balancing, the utility and efficiency of the bike share system are significantly reduced, leading to customer dissatisfaction and a decline in usage.
+
+Below, we propose and evaluate a rebalancing strategy for Indego, the bike share system in Philadelphia, based on a spatiotemporal predictive model. Launched in 2015, Indego has 1,400 bikes distributed across 130 stations, mostly concentrated in Center City, West Philadelphia, and South Philadelphia.^[https://en.wikipedia.org/wiki/Indego] Based on data from the 4th quarter of 2022, as well as supplemental weather data, we propose a predictive model optimized for overnight rebalancing with trucks, which aims to minimize expected customer dissatisfaction the next day.^[https://www.rideindego.com/about/data/] Based on our predictions, an integer program could be used to optimize redistribution routes.^[https://people.orie.cornell.edu/shane/pubs/BSOvernight.pdf] 
+
+```{r stations map}
+ggplot() +
+  geom_sf(data = phlTracts) +
+  geom_sf(data = stations %>%
+            group_by(start_station) %>%
+            summarize(count = n())) +
+  labs(title = "Distribution of Indego Stations in Philadelphia",
+       subtitle = "December 2022")+
+  mapTheme
 ```
+
+# Methods
+
+## Data
+
+### Overview
+For our analysis, we rely on three datasets: 1) Indego station and ridership data from Q4 of 2022, 2) weather data collected at Philadelphia International Airport during those same dates and accessed via the `reim` package in R, and 3) American Community Survey data from 2021.
 
 ### Exploratory Analysis
-Develop exploratory analysis plots that describe the space/time dependencies in the data and create an animated map. Interpret your findings in the context of the re-balancing plan.
-
-```{r eda}
-
-stations %>%
-  ggplot(aes(x = duration)) +
-    geom_freqpoly()
-
-stations %>%
-  ggplot(aes(x = passholder_type)) +
-    geom_bar()
-
-stations %>%
-  ggplot(aes(x = trip_route_category)) +
-    geom_bar()
-
-stations %>%
-  ggplot(aes(x = bike_type)) +
-    geom_bar()
+Examining our bike share data, we notice clear temporal trends: peaks during certain hours of the day and a longer-time decline in trips across the quarter. 
+```{r longterm}
+ggplot(dat_census %>%
+         group_by(interval60, start_station) %>%
+         tally())+
+  geom_histogram(aes(n), binwidth = 5)+
+  labs(title="Bike share trips per hr by station. Philadelphia, Oct. - Dec., 2022",
+       x="Trip Counts", 
+       y="Number of Stations")+
+  plotTheme
 
 
-# using ggplot, plot the number of trips per day
-stations %>%
-  group_by(date) %>%
-  summarise(trips = n()) %>%
-  ggplot(aes(x = date, y = trips)) +
-    geom_line() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ```
+
+
+The afternoon rush hour, for example, is associated with more stations with a higher number of trips.
+
+Likewise, total bike counts across the city per hour peak during the morning and afternoon rush hours. We also observe that total ridership is meaningfully lower on weekends than during the week.
+```{r time}
+dat_census %>% mutate(hour = hour(interval60)) %>%
+ggplot(aes(x = hour, color = as.factor(dotw)))+
+     geom_freqpoly(binwidth = 1)+
+  labs(title="Bike share trips in Philadelphia, by day of the week, Oct. - Dec., 2022",
+       x="Hour", 
+       y="Trip Counts")+
+     plotTheme
+
+
+weekend <- c(1, 7)
+
+ggplot(dat_census %>% 
+         mutate(hour = hour(interval60),
+                weekend = ifelse(dotw %in% weekend, "Weekend", "Weekday")))+
+     geom_freqpoly(aes(x = hour, color = weekend), binwidth = 1)+
+  labs(title="Bike share trips in Philadelphia, Oct. - Dec., 2022, \nweekend vs. weekday",
+       x="Hour", 
+       y="Trip Counts")+
+     plotTheme
+```
+
 
 ```{r trips x hour}
 ggplot(dat_census %>%
@@ -276,44 +291,22 @@ dat_census %>%
   group_by(start_station, time_of_day)%>%
   summarize(mean_trips = mean(n))%>%
   ggplot()+
-  geom_histogram(aes(mean_trips), binwidth = 1)+
+  geom_density(aes(mean_trips, color = time_of_day), fill = NA, alpha = 0.3)+
   labs(title="Mean Number of Hourly Trips Per Station. Philadelphia, Oct. - Dec., 2022",
        x="Number of trips", 
-       y="Frequency")+
-  facet_wrap(~time_of_day)+
+       y="Density",
+       color = "Time of Day")+
+ # facet_wrap(~time_of_day)+
   plotTheme
 
 
-ggplot(dat_census %>%
-         group_by(interval60, start_station) %>%
-         tally())+
-  geom_histogram(aes(n), binwidth = 5)+
-  labs(title="Bike share trips per hr by station. Philadelphia, Oct. - Dec., 2022",
-       x="Trip Counts", 
-       y="Number of Stations")+
-  plotTheme
-
-dat_census %>% mutate(hour = hour(interval60)) %>%
-ggplot(aes(x = hour, color = as.factor(dotw)))+
-     geom_freqpoly(binwidth = 1)+
-  labs(title="Bike share trips in Philadelphia, by day of the week, Oct. - Dec., 2022",
-       x="Hour", 
-       y="Trip Counts")+
-     plotTheme
 
 
 
-weekend <- c(1, 7)
+```
 
-ggplot(dat_census %>% 
-         mutate(hour = hour(interval60),
-                weekend = ifelse(dotw %in% weekend, "Weekend", "Weekday")))+
-     geom_freqpoly(aes(x = hour, color = weekend), binwidth = 1)+
-  labs(title="Bike share trips in Philadelphia, Oct. - Dec., 2022, \nweekend vs. weekday",
-       x="Hour", 
-       y="Trip Counts")+
-     plotTheme
-
+These trends are born out spatially, as we observe that the highest ridership per station clusters in the downtown and University City areas during the afternoon rush hour.
+```{r map}
 
 ggplot()+
   geom_sf(data = phlTracts %>%
@@ -338,8 +331,17 @@ ggplot()+
   mapTheme
 ```
 
-## Spatiotemporal Prediction
-Use purrr to train and validate several models for comparison on the latter two week test set. Perform either random k-fold cross validation or LOGO-CV on the 5 week panel. You may choose to cross validate by time or space. Interpret your findings in the context of accuracy and generalizability.
+It is likely that this decrease from October through December is related to dropping temperatures, accounted for in our weather data:
+```{r weather plots}
+grid.arrange(
+  ggplot(weather.Panel, aes(interval60,Precipitation)) + geom_line() + 
+  labs(title="Precipitation", x="Hour", y="Precipitation") + plotTheme,
+  ggplot(weather.Panel, aes(interval60,Wind_Speed)) + geom_line() + 
+    labs(title="Wind Speed", x="Hour", y="Wind Speed") + plotTheme,
+  ggplot(weather.Panel, aes(interval60,Temperature)) + geom_line() + 
+    labs(title="Temperature", x="Hour", y="Temperature") + plotTheme,
+  top="Weather Data - Philadelphia PHL - Oct. - Dec., 2022")
+```
 
 ```{r wrangle}
 study.panel <- 
@@ -392,7 +394,10 @@ ride.panel <-
                                  dplyr::lead(holiday, 1) == 1 ~ "MinusOneDay",
                                  dplyr::lead(holiday, 2) == 1 ~ "MinusTwoDays",
                                  dplyr::lead(holiday, 3) == 1 ~ "MinusThreeDays",
-                                TRUE ~ "Zero"))
+                                TRUE ~ "Zero")) %>%
+  mutate(nb = st_knn(st_jitter(geometry), 3),
+         wt = st_weights(nb),
+         Trip_Count_Lag = st_lag(Trip_Count, nb, wt))
 
 as.data.frame(ride.panel) %>%
     group_by(interval60) %>% 
@@ -401,8 +406,49 @@ as.data.frame(ride.panel) %>%
     mutate(Variable = factor(Variable, levels=c("lagHour","lag2Hours","lag3Hours","lag4Hours",
                                                 "lag12Hours","lag1day")))%>%
     group_by(Variable) %>%  
-    summarize(correlation = round(cor(Value, Trip_Count),2))
+    summarize(correlation = round(cor(Value, Trip_Count),2)) %>%
+    kbl() %>%
+  kable_paper(bootstrap_options = "striped", full_width = F)
 ```
+
+Finally, we note clear spatial and temporal autocorrelation in our data: this map, for example, indicates that data cluster at certain times 
+```{r animated map}
+ride.sum <- ride.panel %>%
+                mutate(date = ymd(as.Date(interval60))) %>%
+                group_by(date, start_station) %>%
+                summarize(count = sum(Trip_Count)) %>% 
+                  ungroup() %>%
+                  mutate(start_lon = as.numeric(st_coordinates(.)[,1]),
+                         start_lat = as.numeric(st_coordinates(.)[,2])) %>%
+                st_drop_geometry()
+
+p <- ggplot() +
+      geom_sf(data = phlTracts) + 
+      geom_point(data = st_drop_geometry(ride.sum),
+                 aes(x = start_lon,
+                     y = start_lat,
+                     color = count),
+  fill = "transparent", alpha = 0.4)+
+  scale_colour_viridis(direction = 1,
+  discrete = FALSE, option = "D") +
+  transition_states(date,
+                    transition_length = 5, 
+                    state_length = 1) +
+  enter_fade() +
+  exit_fade() +
+  labs(title = "Station Usage in Philadelphia, Q4 2022",
+       subtitle = "Day of year: {closest_state}",
+       color = "Trip Count") +
+  mapTheme
+
+animate(p)
+```
+
+
+## Spatiotemporal Prediction
+Use purrr to train and validate several models for comparison on the latter two week test set. Perform either random k-fold cross validation or LOGO-CV on the 5 week panel. You may choose to cross validate by time or space. Interpret your findings in the context of accuracy and generalizability.
+
+
 
 
 ```{r model}
@@ -431,6 +477,11 @@ reg5 <-
   lm(Trip_Count ~  start_station + hour(interval60) + dotw + Temperature + Precipitation +
                    lagHour + lag2Hours +lag3Hours +lag12Hours + lag1day + holidayLag + holiday, 
      data=ride.Train)
+
+reg6 <- 
+  lm(Trip_Count ~  start_station + hour(interval60) + dotw + Temperature + Precipitation +
+                   lagHour + lag2Hours +lag3Hours +lag12Hours + lag1day + holidayLag + holiday + Trip_Count_Lag, 
+     data=ride.Train)
 ```
 
 ```{r predict}
@@ -448,7 +499,8 @@ week_predictions <-
            BSpace_FE = map(.x = data, fit = reg2, .f = model_pred),
            CTime_Space_FE = map(.x = data, fit = reg3, .f = model_pred),
            DTime_Space_FE_timeLags = map(.x = data, fit = reg4, .f = model_pred),
-           ETime_Space_FE_timeLags_holidayLags = map(.x = data, fit = reg5, .f = model_pred)) %>% 
+           ETime_Space_FE_timeLags_holidayLags = map(.x = data, fit = reg5, .f = model_pred),
+           FTime_Space_FE_timeLags_holidayLags_tripCountLags = map(.x = data, fit = reg5, .f = model_pred)) %>% 
     gather(Regression, Prediction, -data, -week) %>%
     mutate(Observed = map(data, pull, Trip_Count),
            Absolute_Error = map2(Observed, Prediction,  ~ abs(.x - .y)),
@@ -465,7 +517,7 @@ week_predictions %>%
   gather(Variable, MAE, -Regression, -week) %>%
   ggplot(aes(week, MAE)) + 
     geom_bar(aes(fill = Regression), position = "dodge", stat="identity") +
-    scale_fill_manual(values = palette5) +
+    scale_fill_manual(values = palette6) +
     labs(title = "Mean Absolute Errors by model specification and week") +
   plotTheme
 
@@ -490,7 +542,7 @@ week_predictions %>%
            start_lon = map(data, pull, start_lon)) %>%
     select(interval60, start_station, start_lon, start_lat, Observed, Prediction, Regression) %>%
     unnest() %>%
-  filter(Regression == "ETime_Space_FE_timeLags_holidayLags") %>%
+  filter(Regression == "FTime_Space_FE_timeLags_holidayLags_tripCountLags") %>%
   group_by(start_station, start_lon, start_lat) %>%
   summarize(MAE = mean(abs(Observed-Prediction), na.rm = TRUE))%>%
 ggplot(.)+
@@ -502,7 +554,7 @@ ggplot(.)+
   discrete = FALSE, option = "D")+
   ylim(min(dat_census$start_lat), max(dat_census$start_lat))+
   xlim(min(dat_census$start_lon), max(dat_census$start_lon))+
-  labs(title="Mean Abs Error, Test Set, Model 5")+
+  labs(title="Mean Abs Error, Test Set, Model 6")+
   mapTheme
 ```
 
@@ -517,7 +569,7 @@ week_predictions %>%
            start_lat, Observed, Prediction, Regression,
            dotw) %>%
     unnest(cols = c(interval60, start_station, start_lon, start_lat, Observed, Prediction, dotw)) %>%
-  filter(Regression == "ETime_Space_FE_timeLags_holidayLags")%>%
+  filter(Regression == "FTime_Space_FE_timeLags_holidayLags_tripCountLags")%>%
   mutate(weekend = ifelse(dotw %in% weekend, "Weekend", "Weekday"),
          time_of_day = case_when(hour(interval60) < 7 | hour(interval60) > 18 ~ "Overnight",
                                  hour(interval60) >= 7 & hour(interval60) < 10 ~ "AM Rush",
@@ -545,7 +597,7 @@ week_predictions %>%
            start_lat, Observed, Prediction, Regression,
            dotw) %>%
     unnest() %>%
-  filter(Regression == "ETime_Space_FE_timeLags_holidayLags")%>%
+  filter(Regression == "FTime_Space_FE_timeLags_holidayLags_tripCountLags")%>%
   mutate(weekend = ifelse(dotw %in% weekend, "Weekend", "Weekday"),
          time_of_day = case_when(hour(interval60) < 7 | hour(interval60) > 18 ~ "Overnight",
                                  hour(interval60) >= 7 & hour(interval60) < 10 ~ "AM Rush",
@@ -566,6 +618,7 @@ week_predictions %>%
   labs(title="Mean Absolute Errors, Test Set")+
   mapTheme
 ```
+
 ```{r error x socioecon vars}
 week_predictions %>%
     mutate(interval60 = map(data, pull, interval60),
@@ -580,7 +633,7 @@ week_predictions %>%
            start_lat, Observed, Prediction, Regression,
            dotw, Percent_Taking_Public_Trans, Med_Inc, Percent_White) %>%
     unnest(cols = c(interval60, start_station, start_lon, start_lat, Observed, Prediction, dotw, Percent_Taking_Public_Trans, Med_Inc, Percent_White)) %>%
-  filter(Regression == "ETime_Space_FE_timeLags_holidayLags") %>%
+  filter(Regression == "FTime_Space_FE_timeLags_holidayLags_tripCountLags") %>%
   mutate(weekend = ifelse(dotw %in% weekend, "Weekend", "Weekday"),
          time_of_day = case_when(hour(interval60) < 7 | hour(interval60) > 18 ~ "Overnight",
                                  hour(interval60) >= 7 & hour(interval60) < 10 ~ "AM Rush",
@@ -603,6 +656,11 @@ week_predictions %>%
 
 
 # Discussion
+
+- both space and time features important
+- model actually seems worse in white, wealthy neighborhoods--is this good or bad?
+- errors are still not randomly spatially distributed, meaning we can continue to engineer better features
+- that said, the predictive power is pretty solid
 
 # Conclusion
 Conclude with how useful your algorithm is for the bike re-balancing plan.
